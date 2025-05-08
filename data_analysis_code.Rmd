@@ -1,0 +1,3293 @@
+---
+title: "LD_analysis"
+output: html_document
+date: "2024-09-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reshape2)
+library(tidyverse)
+library(vegan)
+library(pheatmap)
+library(RColorBrewer)
+library(ape)
+library(dplyr)
+#library(phytools)
+library(ggtree)
+library(aplot)
+library(ggpubr)
+library(gridExtra)
+knitr::opts_knit$set(root.dir = "/Users/martin/Documents/structure/data")
+```
+
+# i is isolate
+# g is gene
+# c is cluster of orthologous genes
+
+```{r}
+fmax=0.9
+fmin=0.1
+
+
+cluster = read.table("/Users/martin/Documents/structure/data/easyclust/clusterRes_cluster.tsv")
+colnames(cluster) = c("c","i")
+
+ori_cluster = cluster
+
+unique_values <- unique(cluster$c)
+# Create a mapping from unique values to "i" + number
+
+# Replace the values in the column "c" using the mapping
+cluster$oldname=cluster$c
+
+
+copycluster=cluster
+mapping <- setNames(paste0("c", seq_along(unique_values) - 1), unique_values)
+
+cluster$c <- mapping[cluster$c]
+
+
+
+cluster$i <- sub("^[^_]*_([^.]*)\\..*$", "\\1", cluster$i)
+
+map_isolate <- setNames(paste0("i", seq_along(unique_values) - 1), unique(cluster$i))
+cluster$i = map_isolate[cluster$i]
+copycluster=cluster
+
+
+#data <- read.table("/Users/martin/Documents/structure/data/annotations/output_file.emapper.annotations", sep = "\t", header = FALSE, comment.char = "#")
+data <- read.table("/Users/martin/Documents/structure/data/annotations/output_file.emapper.annotations", sep = "\t", fill = TRUE, header = TRUE, quote = "", comment.char = "", stringsAsFactors = FALSE)
+data=data[,c(1,7,8,9,21)]
+data$oldname=data[,1]
+data[,1] = mapping[data[,1]]
+rownames(data) = data[,1]
+
+
+
+```
+
+
+```{r}
+# isoinfo = read.table("/Users/martin/Documents/structure/tsv/all.tsv", sep="\t", fill=TRUE, comment.char = "", header=TRUE)
+# isoinfo$Assembly.Accession <- sub("^[^_]*_([^.]*)\\..*$", "\\1", isoinfo$Assembly.Accession)
+# isoinfo = isoinfo[,c(1,5)]
+# colnames(isoinfo) = c("isolate","oriname")
+# isoinfo=isoinfo[isoinfo$i!="Assembly Accession",]
+# map_oldname = setNames(isoinfo$i, isoinfo$oriname)
+# 
+# 
+# isoinfoori = read.table("/Users/martin/Documents/structure/data/pneumoIsolateInformation.tab", sep="\t", fill=TRUE, comment.char = "", header=TRUE)
+# map_loc=setNames(isoinfoori$Isolate.Origin, isoinfoori$Isolate.Name)
+# map_year=setNames(isoinfoori$Year.of.Isolation, isoinfoori$Isolate.Name)
+# map_sero=setNames(isoinfoori$Serotype, isoinfoori$Isolate.Name)
+# map_vt=setNames(isoinfoori$Vaccine.Type, isoinfoori$Isolate.Name)
+# 
+# 
+# #add location, date of isolates in isoinfo
+# isoinfo["location"] = map_loc[isoinfo$oriname]
+# isoinfo["year"] = map_year[isoinfo$oriname]
+# isoinfo["i"] = map_isolate[isoinfo$isolate]
+# isoinfo["serotype"] = map_sero[isoinfo$oriname]
+# isoinfo["vt"] = map_vt[isoinfo$oriname]
+# 
+# 
+# isoinfo=isoinfo[!is.na(isoinfo$location),]
+# 
+# isoinfo = isoinfo[,c("i","oriname","location","year","serotype","vt","isolate")]
+# 
+# isolate.info =  read.csv('data_microreact.csv',header = T,sep = '\t')
+# 
+# map_sc = setNames(isolate.info$SequenceCluster,isolate.info$id)
+# isoinfo$sc = map_sc[isoinfo$oriname]
+
+isoinfo = read.table("/Users/martin/Documents/structure/tsv/all.tsv", sep="\t", fill=TRUE, comment.char = "", header=TRUE)
+isoinfo$Assembly.Accession <- sub("^[^_]*_([^.]*)\\..*$", "\\1", isoinfo$Assembly.Accession)
+isoinfo = isoinfo[,c(1,2)]
+colnames(isoinfo) = c("isolate","seqname")
+isoinfo=isoinfo[isoinfo$i!="Assembly Accession",]
+map_oldname = setNames(isoinfo$i, isoinfo$seqname)
+
+
+isoinfoori = read.table("/Users/martin/Documents/structure/data/pneumoIsolateInformation.tab", sep="\t", fill=TRUE, comment.char = "", header=TRUE)
+isoinfoori$Sequence.file = gsub("\\.fa$", "",isoinfoori$Sequence.file)
+map_loc=setNames(isoinfoori$Isolate.Origin, isoinfoori$Sequence.file)
+map_year=setNames(isoinfoori$Year.of.Isolation, isoinfoori$Sequence.file)
+map_sero=setNames(isoinfoori$Serotype, isoinfoori$Sequence.file)
+map_vt=setNames(isoinfoori$Vaccine.Type, isoinfoori$Sequence.file)
+map_oriname=setNames(isoinfoori$Isolate.Name, isoinfoori$Sequence.file)
+
+
+#add location, date of isolates in isoinfo
+isoinfo["location"] = map_loc[isoinfo$seqname]
+isoinfo["year"] = map_year[isoinfo$seqname]
+isoinfo["i"] = map_isolate[isoinfo$isolate]
+isoinfo["serotype"] = map_sero[isoinfo$seqname]
+isoinfo["vt"] = map_vt[isoinfo$seqname]
+isoinfo["oriname"] = map_oriname[isoinfo$seqname]
+
+
+isoinfo=isoinfo[!is.na(isoinfo$location),]
+
+isoinfo = isoinfo[,c("i","seqname","location","year","serotype","vt","isolate","oriname")]
+
+isolate.info =  read.csv('data_microreact.csv',header = T,sep = '\t')
+isolate.info$Sequence.file = gsub("\\.fa$", "",isolate.info$Sequence.file)
+
+map_sc = setNames(isolate.info$SequenceCluster,isolate.info$Sequence.file)
+isoinfo$sc = map_sc[isoinfo$seqname]
+
+```
+
+#make code for periodic structure project
+```{r eval=FALSE, include=FALSE}
+# Ensure isoinfo and wide_data_mass are loaded and created in previous chunks
+
+# --- 1. Identify Isolates Present in the Massachusetts Data ---
+# Get the 'i' identifiers (which are the rownames of wide_data_mass)
+mass_isolates_i <- rownames(wide_data_mass)
+
+# --- 2. Filter isoinfo to keep only Massachusetts isolates ---
+# Use the 'i' column in isoinfo which should match the rownames of wide_data_mass
+isoinfo_mass <- isoinfo %>% filter(i %in% mass_isolates_i)
+
+# --- 3. Align isoinfo_mass rows precisely with wide_data_mass rows ---
+# The order of rows in wide_data_mass might not be the same as in isoinfo_mass
+# We need to reorder isoinfo_mass to match wide_data_mass exactly.
+# The match() function finds the position of each wide_data_mass rowname
+# within the isoinfo_mass$i column.
+match_order <- match(rownames(wide_data_mass), isoinfo_mass$i)
+# Reorder isoinfo_mass based on this matching order
+isoinfo_mass_aligned <- isoinfo_mass[match_order, ]
+
+# --- 4. Prepare the required metadata columns ---
+
+# Taxon: Use the original isolate name for better identification
+taxon_col <- isoinfo_mass_aligned$oriname
+if (any(is.na(taxon_col))) {
+    print("Warning: Some 'oriname' values are NA. Using 'isolate' column as fallback.")
+    taxon_col <- ifelse(is.na(isoinfo_mass_aligned$oriname), isoinfo_mass_aligned$isolate, isoinfo_mass_aligned$oriname)
+}
+if (any(duplicated(taxon_col))) {
+    print("Warning: Duplicated Taxon IDs found. Consider using a more unique ID if needed.")
+}
+
+
+# Timepoint: Convert year to numeric, handle NAs or non-numeric years by setting to 0
+# Assuming '0' is acceptable for unknown/baseline timepoints in your simulation
+timepoint_col <- suppressWarnings(as.numeric(isoinfo_mass_aligned$year))
+timepoint_col[is.na(timepoint_col)] <- 0 # Assign 0 to NAs or conversion failures
+timepoint_col <- as.integer(timepoint_col) # Ensure it's integer type
+
+# Serotype: Handle potential NAs
+serotype_col <- isoinfo_mass_aligned$serotype
+serotype_col[is.na(serotype_col)] <- "Unknown" # Assign "Unknown" if serotype is missing
+
+# VT (Vaccine Type): Convert character ("VT", "NVT") to numeric (1, 0)
+# Handle NAs or other unexpected values by defaulting to NVT (0)
+vt_col <- case_when(
+    isoinfo_mass_aligned$vt == "VT" ~ 1,
+    isoinfo_mass_aligned$vt == "NVT" ~ 0,
+    TRUE ~ 0 # Default to 0 (NVT) for NAs or any other value
+)
+vt_col <- as.integer(vt_col)
+
+# SC (Sequence Cluster): Convert to numeric, handle NAs by setting to 0
+# Assuming SC 0 is acceptable for unknown/missing clusters
+sc_col <- suppressWarnings(as.numeric(isoinfo_mass_aligned$sc))
+sc_col[is.na(sc_col)] <- 0 # Assign 0 to NAs or conversion failures
+sc_col <- as.integer(sc_col) # Ensure it's integer type
+
+# --- 5. Combine Metadata and Gene Presence/Absence Data ---
+
+# Create the initial metadata part of the dataframe
+final_df <- data.frame(
+    Taxon = taxon_col,
+    Timepoint = timepoint_col,
+    Serotype = serotype_col,
+    VT = vt_col,
+    SC = sc_col,
+    stringsAsFactors = FALSE # Important for character columns
+)
+
+# Ensure wide_data_mass contains only integers (0s and 1s)
+# It should from the table() step, but let's be sure.
+wide_data_mass_int <- as.data.frame(lapply(wide_data_mass, as.integer))
+rownames(wide_data_mass_int) <- rownames(wide_data_mass) # Keep rownames
+
+
+# Sanity check: Ensure the number of rows and the isolate order still match
+if (nrow(final_df) != nrow(wide_data_mass_int)) {
+    stop("Mismatch in number of rows between metadata and gene data.")
+}
+# This check uses the 'i' identifier from the aligned metadata
+if (!all(isoinfo_mass_aligned$i == rownames(wide_data_mass_int))) {
+    stop("Row order mismatch between aligned metadata ('i') and gene data rownames.")
+}
+
+# Combine the metadata with the gene presence/absence matrix
+# cbind assumes rows are in the same order, which we ensured above
+final_output_df <- cbind(final_df, wide_data_mass_int)
+
+# Put all times to zero for the simulation
+final_output_df$Timepoint=0
+
+# --- 6. Write the final dataframe to a TSV file ---
+output_filename <- "massachusetts_simulation_input.tsv" # Choose your output file name
+write.table(final_output_df,
+            file = output_filename,
+            sep = "\t",          # Use tab as separator
+            row.names = FALSE,   # Do not include row names in the output file
+            quote = FALSE)       # Do not put quotes around column names or values
+
+print(paste("Successfully created TSV file:", output_filename))
+print("Structure of the first few rows and columns:")
+print(head(final_output_df[, 1:min(10, ncol(final_output_df))])) # Show first few cols
+```
+
+# make cluster only with genes present in isoinfo
+# filter above 5%
+
+```{r}
+cluster=cluster[cluster$i %in% isoinfo$i,]
+tablewhichlow = table(cluster$c)>(length(unique(cluster$i)) * fmin)
+cluster=cluster[tablewhichlow[cluster$c],]
+tablewhichhigh = table(cluster$c)<(length(unique(cluster$i)) * fmax)
+cluster=cluster[tablewhichhigh[cluster$c],]
+
+
+
+
+```
+
+```{r}
+imap_loc=setNames(isoinfo$location, isoinfo$i)
+imap_year=setNames(isoinfo$year, isoinfo$i)
+map_iori=setNames(isoinfo$i, isoinfo$oriname)
+
+
+
+
+
+
+
+```
+
+
+```{r}
+Dprime2matrix = function(df){
+  df=df[,colSums(df)<fmax*nrow(df)]
+  df=df[,colSums(df)>fmin*nrow(df)]
+  Ddf=data.frame(matrix(-10,ncol=ncol(df),nrow=ncol(df)))
+  colnames(Ddf) = colnames(df)
+  rownames(Ddf) = colnames(df)
+  freqs=colSums(df)/nrow(df)
+  for (i in seq(ncol(df))){
+    if(i%%100==0){print(paste0(toString(i),"/",toString(ncol(df))))}
+    for (j in seq(ncol(df))){
+      tempcol=df[,i]+df[,j]
+      p.a=freqs[i]
+      p.b=freqs[j]
+      p.ab=(sum(tempcol[tempcol==2])/nrow(df))/2
+      D=p.ab-p.a * p.b
+      if(D>=0)
+      {Dmax = min(p.a*(1-p.b),p.b*(1-p.a))} else {Dmax = min(p.a * p.b,(1-p.a)*(1-p.b))}
+      Ddf[i,j]=D/Dmax
+      #Ddf[i,j]=D
+    }
+  }
+  return(Ddf)
+}
+
+
+
+
+chisquarematrix = function(df){
+  df=df[,colSums(df)<fmax*nrow(df)]
+  df=df[,colSums(df)>fmin*nrow(df)]
+  Ddf=data.frame(matrix(-10,ncol=ncol(df),nrow=ncol(df)))
+  colnames(Ddf) = colnames(df)
+  rownames(Ddf) = colnames(df)
+  freqs=colSums(df)/nrow(df)
+  for (i in seq(ncol(df))){
+    if(i%%100==0){print(paste0(toString(i),"/",toString(ncol(df))))}
+    for (j in seq(ncol(df))){
+      chimat=table(df[,i], df[,j])
+      chi = suppressWarnings(chisq.test(chimat))
+      Ddf[i,j]=chi$p.value
+    }
+  }
+  return(Ddf)
+}
+
+
+## if pvalue is below 0.005 bonferroni corrected, then it gives the estimate, otherwise gives -10
+
+corrmatrix = function(df){
+  df=df[,colSums(df)<fmax*nrow(df)]
+  df=df[,colSums(df)>fmin*nrow(df)]
+  
+  Ddf=data.frame(matrix(-10,ncol=ncol(df),nrow=ncol(df)))
+  colnames(Ddf) = colnames(df)
+  rownames(Ddf) = colnames(df)
+  
+  thresh = 0.0005 / (ncol(df) * ncol(df))
+  
+  freqs=colSums(df)/nrow(df)
+  for (i in seq(ncol(df))){
+    if(i%%100==0){print(paste0(toString(i),"/",toString(ncol(df))))}
+    for (j in seq(ncol(df))){
+      temp = cor.test(df[,i],df[,j])
+      if ( temp$p.value < thresh) {Ddf[i,j]=temp$estimate}
+      else{Ddf[i,j]=-10}
+    }
+  }
+  return(Ddf)
+}
+
+Dshuffle = function(df,g1,g2,doyousave){
+  if ((dim(df)[1]>1) && (dim(df)[2]>1)){
+    ndf=df
+    ndf[,]=0
+    
+    #function to resample matrix
+    print(dim(df))
+    for (i in seq(1,ncol(df))){
+      rows = sample(rownames(df),colSums(df)[i],prob=rowSums(df),replace=FALSE) # isolates have set likely number of genes
+      #rows = sample(rownames(df),colSums(df)[i],prob=rep(1/nrow(df),nrow(df)),replace=FALSE) # isolates have same number of genes
+      ndf[rows,colnames(df)[i]]=1
+    }
+    
+    Ddf=Dprime2matrix(df)
+    Dndf=Dprime2matrix(ndf)
+    
+    Ddf_values = Ddf[Ddf>-10]
+    Dndf_values = Dndf[Dndf>-10]
+    
+    p1 = hist(Ddf_values, breaks=seq(-1,1,0.05),plot=FALSE)
+    p2 = hist(Dndf_values, breaks=seq(-1,1,0.05),plot=FALSE) #reshuffled
+    
+    if (doyousave){
+    jpeg(paste0("/Users/martin/Documents/strains/figures/D_examples/",g1,g2,".jpg"))
+
+    plot( p2, col=rgb(1,0,0,1/4), xlim=c(-1,1), main=title(paste0(g1,g2)))  #reshuffled
+    plot( p1, col=rgb(0,0,1,1/4), xlim=c(-1,1), add=TRUE)  # first histogram
+    dev.off()
+    }
+    else{
+    plot( p2, col=rgb(1,0,0,1/4), xlim=c(-1,1), main=title(paste0(g1,g2))) 
+    plot( p1, col=rgb(0,0,1,1/4), xlim=c(-1,1), add=TRUE)  # first histogram
+    }
+  }
+  return(list(Ddf,Dndf))
+}
+
+
+corrshuffle = function(df,g1,g2,doyousave){
+  if ((dim(df)[1]>1) && (dim(df)[2]>1)){
+    ndf=df
+    ndf[,]=0
+    
+    #function to resample matrix
+    print(dim(df))
+    for (i in seq(1,ncol(df))){
+      rows = sample(rownames(df),colSums(df)[i],prob=rowSums(df),replace=FALSE) # isolates have set likely number of genes
+      #rows = sample(rownames(df),colSums(df)[i],prob=rep(1/nrow(df),nrow(df)),replace=FALSE) # isolates have same number of genes
+      ndf[rows,colnames(df)[i]]=1
+    }
+    
+    Ddf=corrmatrix(df)
+    Dndf=corrmatrix(ndf)
+    
+    Ddf[Ddf>15]=15
+    Dndf[Dndf>15]=15
+    
+    Ddf_values = Ddf[Ddf>-10]
+    Dndf_values = Dndf[Dndf>-10]
+    
+    p1 = hist(Ddf_values,plot=FALSE)
+    p2 = hist(Dndf_values,plot=FALSE)
+    
+    if (doyousave){
+    jpeg(paste0("/Users/martin/Documents/strains/figures/D_examples/",g1,g2,".jpg"))
+
+    plot( p2, col=rgb(1,0,0,1/4), main=title(paste0(g1,g2))) 
+    plot( p1, col=rgb(0,0,1,1/4), add=TRUE)  # first histogram
+    dev.off()
+    }
+    else{
+    plot( p2, col=rgb(1,0,0,1/4), main=title(paste0(g1,g2))) 
+    plot( p1, col=rgb(0,0,1,1/4), add=TRUE)  # first histogram
+    }
+  }
+  return(list(Ddf,Dndf))
+}
+
+
+```
+
+A	RNA processing and modification
+B	Chromatin Structure and dynamics
+C	Energy production and conversion
+D	Cell cycle control and mitosis
+E	Amino Acid metabolis and transport
+F	Nucleotide metabolism and transport
+G	Carbohydrate metabolism and transport
+H	Coenzyme metabolis
+I	Lipid metabolism
+J	Tranlsation
+K	Transcription
+L	Replication and repair
+M	Cell wall/membrane/envelop biogenesis
+N	Cell motility
+O	Post-translational modification, protein turnover, chaperone functions
+P	Inorganic ion transport and metabolism
+Q	Secondary Structure
+T	Signal Transduction
+U	Intracellular trafficing and secretion
+Y	Nuclear structure
+Z	Cytoskeleton
+R	General Functional Prediction only
+S	Function Unknown
+
+
+
+```{r}
+map_function = setNames(data[,2], data[,1])
+```
+
+```{r}
+tree=read.tree("/Users/martin/Documents/structure/data/tree.nwk")
+tips=tree$tip.label
+
+tree <- drop.tip(tree, tips[!tips %in% isoinfo$seqname])
+tree$tip.label = map_oldname[tree$tip.label]
+
+```
+
+
+
+
+make the table isolate x gene
+```{r}
+# Set frequency thresholds
+fmin1 <- 0.1  # Minimum proportion (5%)
+fmax1 <- 0.9  # Maximum proportion (95%)
+
+#add serotypes
+new_data <- cbind(isoinfo$serotype, isoinfo$i)
+cluster=cluster[,c(1,2)]
+colnames(new_data) <- colnames(cluster)
+cluster=rbind(cluster,new_data)
+
+
+cluster_maela=cluster[imap_loc[cluster$i]=="Maela",]
+cluster_south=cluster[imap_loc[cluster$i]=="Southampton",]
+cluster_mass=cluster[imap_loc[cluster$i]=="Massachusetts",]
+
+presence_absence_matrix <- ifelse(table(cluster$i,cluster$c) > 0, 1, 0)
+wide_data <- as.data.frame.matrix(presence_absence_matrix)
+write.csv(wide_data,"R/wide_data.csv")
+
+
+presence_absence_matrix <- ifelse(table(cluster_maela$i,cluster_maela$c) > 0, 1, 0)
+#wide_data_maela <- as.data.frame.matrix(presence_absence_matrix)
+# Calculate proportional frequencies (0-1 range)
+column_proportions <- colMeans(presence_absence_matrix)
+filtered_matrix <- presence_absence_matrix[, column_proportions >= fmin1 & column_proportions <= fmax1]
+wide_data_maela <- as.data.frame.matrix(filtered_matrix)
+write.csv(wide_data_maela,"R/wide_data_maela.csv")
+
+presence_absence_matrix <- ifelse(table(cluster_south$i,cluster_south$c) > 0, 1, 0)
+#wide_data_south <- as.data.frame.matrix(presence_absence_matrix)
+# Calculate proportional frequencies (0-1 range)
+column_proportions <- colMeans(presence_absence_matrix)
+filtered_matrix <- presence_absence_matrix[, column_proportions >= fmin1 & column_proportions <= fmax1]
+wide_data_south <- as.data.frame.matrix(filtered_matrix)
+write.csv(wide_data_south,"R/wide_data_south.csv")
+
+presence_absence_matrix <- ifelse(table(cluster_mass$i,cluster_mass$c) > 0, 1, 0)
+#wide_data_mass <- as.data.frame.matrix(presence_absence_matrix)
+# Calculate proportional frequencies (0-1 range)
+column_proportions <- colMeans(presence_absence_matrix)
+filtered_matrix <- presence_absence_matrix[, column_proportions >= fmin1 & column_proportions <= fmax1]
+wide_data_mass <- as.data.frame.matrix(filtered_matrix)
+write.csv(wide_data_mass,"R/wide_data_mass.csv")
+
+```
+
+
+#new wide data with within pop threshold
+```{r}
+# Set frequency thresholds
+fmin1 <- 0.1
+fmax1 <- 0.9
+
+# Function to process each population
+process_population <- function(cluster_data) {
+  # Create presence-absence matrix
+  presence_matrix <- ifelse(table(cluster_data$i, cluster_data$c) > 0, 1, 0)
+  
+  # Calculate proportional frequencies
+  column_proportions <- colMeans(presence_matrix)
+  
+  # Return matrix and valid genes
+  list(
+    matrix = presence_matrix,
+    valid_genes = names(column_proportions[column_proportions >= fmin1 & column_proportions <= fmax1])
+  )
+}
+
+# Process all populations
+maela_data <- process_population(cluster_maela)
+south_data <- process_population(cluster_south)
+mass_data <- process_population(cluster_mass)
+
+# Find common genes across all populations
+common_genes <- Reduce(intersect, list(
+  maela_data$valid_genes,
+  south_data$valid_genes,
+  mass_data$valid_genes
+))
+
+# Create filtered datasets for each population using common genes
+wide_data_maela <- as.data.frame.matrix(maela_data$matrix[, common_genes])
+wide_data_south <- as.data.frame.matrix(south_data$matrix[, common_genes])
+wide_data_mass <- as.data.frame.matrix(mass_data$matrix[, common_genes])
+
+# Write to CSV
+write.csv(wide_data_maela, "R/wide_data_maela.csv")
+write.csv(wide_data_south, "R/wide_data_south.csv")
+write.csv(wide_data_mass, "R/wide_data_mass.csv")
+
+# Print diagnostics
+message("Common genes across all populations: ", length(common_genes))
+message("maela dimensions: ", nrow(wide_data_maela), " samples × ", ncol(wide_data_maela), " genes")
+message("south dimensions: ", nrow(wide_data_south), " samples × ", ncol(wide_data_south), " genes")
+message("mass dimensions: ", nrow(wide_data_mass), " samples × ", ncol(wide_data_mass), " genes")
+
+```
+
+```{r}
+# Calculate proportional frequencies (0-1 range)
+column_proportions <- colMeans(presence_absence_matrix)
+# Set frequency thresholds
+fmin1 <- 0.05  # Minimum proportion (5%)
+fmax1 <- 0.95  # Maximum proportion (95%)
+filtered_matrix <- presence_absence_matrix[, column_proportions >= fmin1 & column_proportions <= fmax1]
+wide_data_south1 <- as.data.frame.matrix(filtered_matrix)
+```
+
+
+```{r}
+# Function to split data frame into multiple files
+split_dataframe <- function(df, max_cols = 10, output_dir = "R/output_files") {
+  # Ensure the output directory exists
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir)
+  }
+  
+  # Get the number of columns
+  total_cols <- ncol(df)
+  
+  # Calculate number of files needed
+  num_files <- ceiling(total_cols / max_cols)
+  
+  # Loop through and create files
+  for (i in 1:num_files) {
+    # Define the column range for the current file
+    start_col <- (i - 1) * max_cols + 1
+    end_col <- min(i * max_cols, total_cols)
+    
+    # Subset the data frame
+    df_subset <- df[, start_col:end_col, drop = FALSE]
+    
+    # Define the output file path
+    file_path <- file.path(output_dir, paste0("file_part_", i, ".csv"))
+    
+    # Write the subset to a CSV file, keeping row names
+    write.csv(df_subset, file_path, row.names = TRUE)
+  }
+  
+  cat("Data frame has been split into", num_files, "files in the directory", output_dir, ".\n")
+}
+
+# Example usage
+# Assuming df is your data frame
+#split_dataframe(df, max_cols = 50, output_dir = "output_files")
+
+
+#split_dataframe(wide_data)
+
+
+
+#write down tree renamed for pastml, add root midpoint.
+#also add a root to wide_data that has the likeliest genes according to frequency in pop
+treex=read.tree("/Users/martin/Documents/structure/data/tree.nwk")
+treex$tip.label = map_iori[treex$tip.label]
+treex <- drop.tip(treex, treex$tip.label[!treex$tip.label %in%rownames(wide_data)])
+
+
+num_tips <- length(treex$tip.label)
+
+# Internal nodes are indexed from num_tips + 1 onwards
+# Generate internal node labels (e.g., "Node_1", "Node_2", etc.)
+internal_node_labels <- paste0("Node_", 1:treex$Nnode)
+
+# Assign names to internal nodes
+treex$node.label <- internal_node_labels
+
+
+write.tree(treex, "/Users/martin/Documents/structure/data/R/treex.nwk")
+
+
+
+traits = as.data.frame(wide_data_mass)
+
+
+
+get_tip_order <- function(tre) {
+  # Plot the tree without displaying it
+  plot(tre, plot = FALSE)
+  
+  # Get the information of the last plotted tree
+  plot_info <- get("last_plot.phylo", envir = .PlotPhyloEnv)
+  
+  # Extract the tip labels and their corresponding y-coordinates
+  tip_order <- data.frame(TipLabel = tre$tip.label, Ycoord = plot_info$yy[1:length(tre$tip.label)])
+  
+  # Sort the data frame by y-coordinates to get the order from top to bottom
+  tip_order <- tip_order[order(tip_order$Ycoord, decreasing = FALSE), ]
+  
+  return(tip_order$TipLabel)
+}
+
+
+```
+
+
+
+```{r}
+get_main_plot=function(traits){
+
+
+treex=read.tree("/Users/martin/Documents/structure/data/tree.nwk")
+treex$tip.label = map_iori[treex$tip.label]
+treex <- drop.tip(treex, treex$tip.label[!treex$tip.label %in%rownames(traits)])
+
+
+
+traits=traits[get_tip_order(treex),]
+
+
+#traits=traits[,colSums(traits)>nrow(traits)*0.03]
+traits=traits[,names(sort(colSums(traits), decreasing = TRUE))]
+
+d2 = melt(as.matrix(traits))
+d2$Var1 <- factor(d2$Var1, levels = get_tip_order(treex))
+
+
+p2 <- ggplot(d2, aes(x=Var2, y=Var1)) +
+    geom_tile(aes(fill=factor(value))) +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+         axis.text.y=element_blank(),
+         axis.ticks.y=element_blank(),
+        legend.position = "none")+ xlab(NULL) + ylab(NULL)+
+  scale_fill_manual(values=c("white","black"))
+
+
+
+
+
+p1=ggtree(treex, ladderize=F)#+ geom_tiplab(offset = 0.01, hjust = .5, size=2)
+return(list(p1,p2))}
+
+
+
+get_plots=function(traits){
+
+rownames(traits) = traits$i
+
+treex=read.tree("/Users/martin/Documents/structure/data/tree.nwk")
+treex$tip.label = map_iori[treex$tip.label]
+treex <- drop.tip(treex, treex$tip.label[!treex$tip.label %in%rownames(traits)])
+
+#rnames=order(factor(rownames(traits),levels=treex$tip.label))
+
+traits=traits[get_tip_order(treex),]
+
+traits=traits[,c("i","serotype","sc")]
+traits$pop = imap_loc[rownames(traits)]
+
+d3=traits
+d3$temp=1
+
+d3$i <- factor(d3$i, levels = get_tip_order(treex))
+
+
+
+
+
+
+ps <- ggplot(d3, aes(x=temp, y=i)) + 
+    geom_tile(aes(fill=serotype)) +
+      theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+         axis.text.y=element_blank(),
+         axis.ticks.y=element_blank(),
+        legend.position = "none")+ xlab(NULL) + ylab(NULL)
+
+
+
+psc <- ggplot(d3, aes(x=temp, y=i)) + 
+    geom_tile(aes(fill=sc)) +
+      theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+         axis.text.y=element_blank(),
+         axis.ticks.y=element_blank(),
+        legend.position = "none")+ xlab(NULL) + ylab(NULL)
+
+ppop <- ggplot(d3, aes(x=temp, y=i)) +
+    geom_tile(aes(fill=pop)) +
+    scale_fill_manual(values = c("Maela" = "#C7B8A4", "Massachusetts" = "#ACCD41", "Southampton" = "#70AED6")) +
+      theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+         axis.text.y=element_blank(),
+         axis.ticks.y=element_blank(),
+        legend.position = "none")+ xlab(NULL) + ylab(NULL)
+
+return(list(psc,ps,ppop))}
+
+
+
+
+```
+ 
+ 
+ 
+## Figure S10
+```{r}
+
+
+
+
+
+
+main_plot=function(location){
+  if(location=="All"){iso=isoinfo}
+    else{iso=isoinfo[isoinfo$location==location,]}
+  if(location=="Massachusetts"){traits=wide_data_mass}
+  if(location=="Maela"){traits=wide_data_maela}
+  if(location=="Southampton"){traits=wide_data_south}
+  if(location=="All"){traits=wide_data}
+
+  a=get_plots(iso)
+  b=get_main_plot(traits)
+  ggarrange(b[[1]],a[[3]],a[[1]],a[[2]],b[[2]],  widths = c(2,0.2,0.2,0.2,3),
+            ncol = 4, nrow = 1, align = "h")
+  ggsave(paste0("R/",location,"1.pdf"), width = 50, height = 50, units = "cm")
+}
+
+main_plot("Maela")
+main_plot("Southampton")
+main_plot("Massachusetts")
+main_plot("All")
+
+```
+
+```{r}
+# c_mass=Dprime2matrix(wide_data_mass)
+# write.csv(c_mass,"R/c_mass.csv")
+# 
+# c_maela=Dprime2matrix(wide_data_maela)
+# write.csv(c_mass,"R/c_maela.csv")
+# 
+# c_south=Dprime2matrix(wide_data_south)
+# write.csv(c_mass,"R/c_south.csv")
+# 
+# c_all=Dprime2matrix(wide_data)
+# write.csv(c_all,"R/c_all.csv")
+# 
+d_maela=Dprime2matrix(wide_data_maela)
+write.csv(d_maela,"R/d_maela.csv")
+
+d_mass=Dprime2matrix(wide_data_mass)
+write.csv(d_mass,"R/d_mass.csv")
+
+d_south=Dprime2matrix(wide_data_south)
+write.csv(d_south,"R/d_south.csv")
+
+d_all=Dprime2matrix(wide_data)
+write.csv(d_all,"R/d_all.csv")
+# 
+# chi_maela=chisquarematrix(wide_data_maela)
+# write.csv(chi_maela,"R/chi_maela.csv")
+# 
+# chi_mass=chisquarematrix(wide_data_mass)
+# write.csv(chi_mass,"R/chi_mass.csv")
+# 
+# chi_south=chisquarematrix(wide_data_south)
+# write.csv(chi_south,"R/chi_south.csv")
+# 
+# chi_all=chisquarematrix(wide_data)
+# write.csv(chi_all,"R/chi_all.csv")
+# 
+# 
+# c_mass = read.table("R/c_mass.csv", sep=",",header=TRUE, row.names = 1)
+# c_maela = read.table("R/c_maela.csv", sep=",",header=TRUE, row.names = 1)
+# c_south = read.table("R/c_south.csv", sep=",",header=TRUE, row.names = 1)
+# c_all = read.table("R/c_all.csv", sep=",",header=TRUE, row.names = 1)
+# d_mass = read.table("R/d_mass.csv", sep=",",header=TRUE, row.names = 1)
+# d_maela = read.table("R/d_maela.csv", sep=",",header=TRUE, row.names = 1)
+# d_south = read.table("R/d_south.csv", sep=",",header=TRUE, row.names = 1)
+# d_all = read.table("R/d_all.csv", sep=",",header=TRUE, row.names = 1)
+# chi_mass = read.table("R/chi_mass.csv", sep=",",header=TRUE, row.names = 1)
+# chi_maela = read.table("R/chi_maela.csv", sep=",",header=TRUE, row.names = 1)
+# chi_south = read.table("R/chi_south.csv", sep=",",header=TRUE, row.names = 1)
+# chi_all = read.table("R/chi_all.csv", sep=",",header=TRUE, row.names = 1)
+```
+
+
+```{r}
+summary_func <- function(dfchi, dfd) {
+  # Pre-allocate vectors for better performance
+  total_pairs <- (nrow(dfchi) * (nrow(dfchi) - 1)) / 2
+  pairsvec <- character(total_pairs)
+  chipvec <- numeric(total_pairs)
+  dvec <- numeric(total_pairs)
+
+  # Initialize a counter
+  idx <- 1
+  progress_threshold <- 0.1  # For 10% progress reporting
+  # Loop through matrix
+  for (i in 2:nrow(dfchi)) {
+    for (j in 1:(i - 1)) {
+      # Precompute pair name and save into vectors
+      pairsvec[idx] <- paste0(rownames(dfchi)[i], "-", colnames(dfchi)[j])
+      chipvec[idx] <- dfchi[i, j]
+      dvec[idx] <- dfd[i, j]
+      idx <- idx + 1
+    }
+  }
+  # Combine into data frame and return
+  outdf <- data.frame(pairsvec, chipvec, dvec, stringsAsFactors = FALSE)
+  rownames(outdf) = outdf$pairsvec
+  outdf$chipvec = p.adjust(outdf$chipvec, method = "BH")
+  return(outdf)
+}
+# 
+# summary_south = summary_func(chi_south, d_south)
+# summary_maela = summary_func(chi_maela, d_maela)
+# summary_mass = summary_func(chi_mass, d_mass)
+
+
+```
+
+
+
+
+```{r}
+d1 = read.table("/Users/martin/Documents/structure/data/to_pastml/file_part_1.csv_out", header=TRUE, row.names = 1)
+
+
+
+
+
+for (i in 2:127 ){
+  d2 = read.table(paste0("/Users/martin/Documents/structure/data/to_pastml/file_part_",toString(i),".csv_out"), header=TRUE, row.names = 1)
+  d1=cbind(d1,d2)
+}
+
+```
+
+create wide_data_filtered for genes that have changed from absence->presence or presence->absence more than thresh time (now 100)
+```{r}
+
+tree=read.tree("/Users/martin/Documents/structure/data/R/treex.nwk")
+
+
+
+name_child_parent = function(x){
+  if (x<= num_tips){out = tree$tip.label[x]}
+  else{out=tree$node.label[x - num_tips]}
+  return(out)
+}
+
+
+num_tips <- length(tree$tip.label)
+
+
+# Edge matrix: parent-child relationships
+edge_matrix <- tree$edge
+
+# Relate internal nodes, tips, and edges
+edge_relations <- data.frame(
+  Parent_Node = edge_matrix[, 1],
+  Child_Node = edge_matrix[, 2],
+  
+  # Assign Parent_Label (handling tips and internal nodes)
+  Parent_Label = sapply(edge_matrix[,1], name_child_parent),
+  
+  # Assign Child_Label (handling tips and internal nodes)
+  Child_Label = sapply(edge_matrix[,2], name_child_parent)
+)
+
+
+map_name_to_node1 = setNames(edge_relations$Parent_Node, edge_relations$Parent_Label)
+map_name_to_node2 = setNames(edge_relations$Child_Node, edge_relations$Child_Label)
+
+
+changes = d1[edge_relations$Child_Label,] - d1[edge_relations$Parent_Label,]
+count_ones <- colSums( (changes == 1) )
+count_mones <- colSums( (changes == -1) )
+
+thresh=30
+
+cluster_filtered=names(which(count_ones>thresh))
+cluster_filteredm=names(which(count_mones>thresh))
+cluster_filtered_all = unique(c(cluster_filtered, cluster_filteredm))
+
+print(length(cluster_filtered))
+print(length(cluster_filteredm))
+print(length(cluster_filtered_all))
+
+wide_data_filtered=wide_data[,colnames(wide_data) %in% cluster_filtered_all]
+wide_data_filtered_mass=wide_data_mass[,colnames(wide_data_mass) %in% cluster_filtered_all]
+wide_data_filtered_south=wide_data_south[,colnames(wide_data_south) %in% cluster_filtered_all]
+wide_data_filtered_maela=wide_data_maela[,colnames(wide_data_maela) %in% cluster_filtered_all]
+
+```
+
+```{r}
+# c_massf=Dprime2matrix(wide_data_filtered_mass)
+# write.csv(c_massf,paste0("R/c_massf_",toString(thresh),".csv"))
+# 
+# c_maelaf=Dprime2matrix(wide_data_filtered_maela)
+# write.csv(c_maelaf,paste0("R/c_maelaf_",toString(thresh),".csv"))
+# 
+# c_southf=Dprime2matrix(wide_data_filtered_south)
+# write.csv(c_southf,paste0("R/c_southf_",toString(thresh),".csv"))
+# 
+# c_allf=Dprime2matrix(wide_data_filtered)
+# write.csv(c_allf,paste0("R/c_allf_",toString(thresh),".csv"))
+# 
+# d_maelaf=Dprime2matrix(wide_data_filtered_maela)
+# write.csv(d_maelaf,paste0("R/d_maelaf_",toString(thresh),".csv"))
+# 
+# d_massf=Dprime2matrix(wide_data_filtered_mass)
+# write.csv(d_massf,paste0("R/d_massf_",toString(thresh),".csv"))
+# 
+# d_southf=Dprime2matrix(wide_data_filtered_south)
+# write.csv(d_southf,paste0("R/d_southf_",toString(thresh),".csv"))
+# 
+# d_allf=Dprime2matrix(wide_data_filtered)
+# write.csv(d_allf,paste0("R/d_allf_",toString(thresh),".csv"))
+# 
+# chi_maelaf=chisquarematrix(wide_data_filtered_maela)
+# write.csv(chi_maelaf,paste0("R/chi_maelaf_",toString(thresh),".csv"))
+# 
+# chi_southf=chisquarematrix(wide_data_filtered_south)
+# write.csv(chi_southf,paste0("R/chi_southf_",toString(thresh),".csv"))
+# 
+# chi_massf=chisquarematrix(wide_data_filtered_mass)
+# write.csv(chi_massf,paste0("R/chi_massf_",toString(thresh),".csv"))
+# 
+# chi_allf=chisquarematrix(wide_data_filtered)
+# write.csv(chi_allf,paste0("R/chi_allf_",toString(thresh),".csv"))
+
+
+
+c_massf = read.table(paste0("R/c_massf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+c_maelaf = read.table(paste0("R/c_maelaf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+c_southf = read.table(paste0("R/c_southf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+c_allf = read.table(paste0("R/c_allf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+d_massf = read.table(paste0("R/d_massf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+d_maelaf = read.table(paste0("R/d_maelaf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+d_southf = read.table(paste0("R/d_southf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+d_allf = read.table(paste0("R/d_allf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+chi_massf = read.table(paste0("R/chi_massf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+chi_maelaf = read.table(paste0("R/chi_maelaf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+chi_southf = read.table(paste0("R/chi_southf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+chi_allf = read.table(paste0("R/chi_allf_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+```
+```{r}
+
+upper_tri_values <- d_allf[upper.tri(d_allf, diag = FALSE)]
+
+# Convert to a dataframe for ggplot
+upper_tri_df <- data.frame(values = upper_tri_values)
+
+# Create the histogram using ggplot2
+ggplot(upper_tri_df, aes(x = values)) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "black", alpha = 0.7) +
+  theme_minimal() +
+  xlab("Linkage Disequilibrium D'") +
+  ylab("Number of pairs of genes") 
+
+
+upper_tri_values <- d_allf[upper.tri(d_massf, diag = FALSE)]
+
+# Convert to a dataframe for ggplot
+upper_tri_df <- data.frame(values = upper_tri_values)
+
+# Create the histogram using ggplot2
+ggplot(upper_tri_df, aes(x = values)) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "black", alpha = 0.7) +
+  theme_minimal() +
+  xlab("Linkage Disequilibrium D'") +
+  ylab("Number of pairs of genes") 
+
+
+
+
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Set the bin width
+binwidth <- 0.05
+
+# Extract upper triangular values (excluding diagonal) for d_allf
+upper_tri_values_allf <- d_allf[upper.tri(d_allf, diag = FALSE)]
+
+# Extract upper triangular values (excluding diagonal) for d_massf
+upper_tri_values_massf <- d_massf[upper.tri(d_massf, diag = FALSE)]
+
+# Combine the two datasets into one dataframe with a grouping variable
+combined_df <- data.frame(
+  values = c(upper_tri_values_allf, upper_tri_values_massf),
+  dataset = rep(c("d_allf", "d_massf"), 
+                times = c(length(upper_tri_values_allf), length(upper_tri_values_massf)))
+)
+
+# Calculate frequency for each bin
+binned_data <- combined_df %>%
+  mutate(bin = cut(values, breaks = seq(min(values), max(values), by = binwidth), include.lowest = TRUE)) %>%
+  group_by(bin, dataset) %>%
+  summarise(frequency = n(), .groups = "drop")  # Frequency is the count divided by total points
+
+binned_data=as.data.frame(binned_data)
+
+binned_data$bin = rep(seq(-1, 1, by = 0.05), each=2)
+
+
+
+binned_data[binned_data$dataset=="d_allf","frequency"] = binned_data[binned_data$dataset=="d_allf","frequency"] / length(unlist(upper_tri_values_allf))
+binned_data[binned_data$dataset=="d_massf","frequency"] = binned_data[binned_data$dataset=="d_massf","frequency"] / length(unlist(upper_tri_values_massf))
+
+# Plot the frequencies using geom_bar with overlayed bars
+ggplot(binned_data, aes(x = bin, y = frequency, fill = dataset)) +
+  geom_bar(stat = "identity", position = "identity", color = "black", alpha = 0.5) +  # Use "identity" to overlay bars
+  theme_minimal() +
+  xlab("Linkage Disequilibrium D'") +
+  ylab("Frequency") +  # Y-axis label reflects frequency
+  scale_fill_manual(values = c("steelblue", "tomato"),  # Custom colors for each dataset
+                    labels = c("All populations", "Massachusetts")) +  # Custom labels for legend
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+
+```
+
+
+
+```{r}
+main_plotf=function(location){
+  if(location=="All"){iso=isoinfo}
+    else{iso=isoinfo[isoinfo$location==location,]}
+  if(location=="Massachusetts"){traits=wide_data_filtered_mass}
+  if(location=="Maela"){traits=wide_data_filtered_maela}
+  if(location=="Southampton"){traits=wide_data_filtered_south}
+  if(location=="All"){traits=wide_data_filtered}
+  
+  a=get_plots(iso)
+  b=get_main_plot(traits)
+  ggarrange(b[[1]],a[[3]],a[[1]],a[[2]],b[[2]],  widths = c(2,0.2,0.2,0.2,3),
+            ncol = 5, nrow = 1, align = "h")
+  ggsave(paste0("R/",location,"f_",toString(thresh),"1.pdf"), width = 50, height = 50, units = "cm")
+}
+
+main_plotf("Maela")
+main_plotf("Southampton")
+main_plotf("Massachusetts")
+main_plotf("All")
+
+```
+
+```{r}
+#uses the output of summary_func
+plot_d_pops = function(df1, df2, pval=0.05, per_kegg=0){ #per_kegg=0 no annotation --- per_kegg=1 only same category --- per_hegg=2 only not same category
+  
+  #to find number of genes
+  dff = rbind(df1,df2)
+  split_values <- strsplit(dff$pairsvec, "-")
+  unique_values <- unique(unlist(split_values))
+
+  # Find the number of unique values = number of genes
+  num_unique_values <- length(unique_values)
+
+  
+  # Merge and filter data
+  dfmix = full_join(df1, df2, by = "pairsvec")
+  dfmix = na.omit(dfmix)
+  total_points <- nrow(dfmix)
+  dfmix = dfmix[(dfmix[,2] < pval) & (dfmix[,4] < pval),] # -log10(0.05) = 0.05
+  
+  #annotate to color
+
+  if(per_kegg > 0){
+  dfmix$gene1 <- sub("^(.*)-(.*)$", "\\1", dfmix$pairsvec)
+  dfmix$gene2 <- sub("^(.*)-(.*)$", "\\2", dfmix$pairsvec)
+  
+  desc_map <- setNames(data$COG_category, data$X.query)
+  
+  # Then we can easily pick out the annotation for each gene:
+  dfmix$COG_gene1 <- desc_map[dfmix$gene1]
+  dfmix$COG_gene2 <- desc_map[dfmix$gene2]
+  
+  dfmix$same_category <- (dfmix$COG_gene1 == dfmix$COG_gene2)
+  }
+  
+
+  
+  # Calculate percentages for each quadrant
+  
+  if(per_kegg==1){ #same cat
+  dfmix=dfmix[dfmix$same_category==1,]
+  }
+  if(per_kegg==2){ #different cat
+  dfmix=dfmix[dfmix$same_category==0,]
+  }
+  
+  # Calculate the number of points in each quadrant
+  dfmix = dfmix %>%
+    mutate(quadrant = case_when(
+      dvec.x >= 0 & dvec.y >= 0 ~ "Q1", # Top-right
+      dvec.x < 0 & dvec.y >= 0 ~ "Q2",  # Top-left
+      dvec.x < 0 & dvec.y < 0 ~ "Q3",   # Bottom-left
+      dvec.x >= 0 & dvec.y < 0 ~ "Q4"   # Bottom-right
+    ))
+  
+  dfmix <- dfmix %>% filter(!is.na(quadrant))
+  
+  quadrant_counts <- dfmix %>%
+    group_by(quadrant) %>%
+    summarise(count = dplyr::n()) %>%
+    mutate(percentage = (count / total_points) * 100)%>%
+    mutate(average = (count / num_unique_values))
+  
+
+# Calculate the mean point for each quadrant
+quadrant_means <- dfmix %>%
+  group_by(quadrant) %>%
+  summarise(
+    mean_dvec_x = mean(dvec.x, na.rm = TRUE),  # Mean of dvec.x
+    mean_dvec_y = mean(dvec.y, na.rm = TRUE)   # Mean of dvec.y
+  )
+
+# Compute linear regression for each quadrant
+quadrant_regressions <- dfmix %>%
+  group_by(quadrant) %>%
+  summarise(
+    slope = lm(dvec.y ~ dvec.x)$coefficients[2],  # Slope of the regression line
+    intercept = lm(dvec.y ~ dvec.x)$coefficients[1],  # Intercept of the regression line
+    r_squared = summary(lm(dvec.y ~ dvec.x))$r.squared  # R-squared value
+  )
+  
+
+# Create a scatter plot with linear regression
+p <- ggplot(data = dfmix, aes(x = dvec.x, y = dvec.y)) +
+  geom_point(color = "dodgerblue", size = 1.5, alpha = 0.3) +
+  # Add density contour lines
+  geom_density_2d(color = "darkblue", linewidth = 0.6, alpha = 0.7) +    # Scatter plot points
+#  geom_smooth(method = "lm", color = "darkred", se = TRUE, linewidth = 1) +  # Linear regression line with updated linewidth aesthetic
+  labs(title = "Scatter Plot with Linear Regression and Quadrant Percentages",
+       x = "D' in pop1", y = "D' in pop2") +         
+  theme_minimal() +                                           # Minimal theme
+  theme(
+    plot.title = element_blank(),  # Larger title
+    axis.title = element_text(size = 16, face = "bold"),      # Bold axis titles
+    axis.text = element_text(size = 12),                     # Adjust axis text size
+    panel.grid.major = element_line(color = "gray80", linewidth = 0.5),   # Use linewidth instead of size
+    panel.grid.minor = element_blank(),                       # Remove minor gridlines
+    plot.margin = margin(10, 10, 10, 10)                     # Adjust plot margin for clarity
+  )
+
+
+
+
+# geom_point(
+#   data = quadrant_means, 
+#   aes(x = mean_dvec_x, y = mean_dvec_y), 
+#   color = "darkorange",  # Use a consistent color for all quadrant means
+#   size = 4,              # Adjust size as needed
+#   shape = 16             # Use a solid dot shape
+# )
+# geom_abline(
+#   data = quadrant_regressions,
+#   aes(slope = slope, intercept = intercept),
+#   color = "darkred",  # Color of the regression lines
+#   linewidth = 1,      # Thickness of the lines
+#   linetype = "solid"  # Line type
+# )+ geom_text(
+#   data = quadrant_regressions,
+#   aes(
+#     x = max(dfmix$dvec.x) * 0.8,  # Position R-squared labels in the top-right of each quadrant
+#     y = max(dfmix$dvec.y) * 0.8,
+#     label = paste0("R² = ", round(r_squared, 2))  # Format R-squared value
+#   ),
+#   color = "black",  # Color of the text
+#   size = 5,         # Size of the text
+#   fontface = "italic"
+# )
+
+# Ensure valid ranges for annotation positioning
+if (!is.na(max(dfmix$dvec.x)) & !is.na(max(dfmix$dvec.y))) {
+  # Add text annotations for quadrant percentages
+  p <- p + annotate("text", x = max(dfmix$dvec.x)/2, y = max(dfmix$dvec.y)/2,
+                    label = paste0(round(quadrant_counts$percentage[quadrant_counts$quadrant == "Q1"], 1), "%"),
+                    size = 5, color = "black", fontface = "bold") +
+    annotate("text", x = min(dfmix$dvec.x)/2, y = max(dfmix$dvec.y)/2,
+             label = paste0(round(quadrant_counts$percentage[quadrant_counts$quadrant == "Q2"], 1), "%"),
+             size = 5, color = "black", fontface = "bold") +
+    annotate("text", x = min(dfmix$dvec.x)/2, y = min(dfmix$dvec.y)/2,
+             label = paste0(round(quadrant_counts$percentage[quadrant_counts$quadrant == "Q3"], 1), "%"),
+             size = 5, color = "black", fontface = "bold") +
+    annotate("text", x = max(dfmix$dvec.x)/2, y = min(dfmix$dvec.y)/2,
+             label = paste0(round(quadrant_counts$percentage[quadrant_counts$quadrant == "Q4"], 1), "%"),
+             size = 5, color = "black", fontface = "bold")
+   # annotate("text", x = max(dfmix$dvec.x)/2, y = max(dfmix$dvec.y)/2-0.2,
+   #                  label = paste0(round(quadrant_counts$average[quadrant_counts$quadrant == "Q1"], 1), ""),
+   #                  size = 5, color = "black", fontface = "italic") +
+   #  annotate("text", x = min(dfmix$dvec.x)/2, y = max(dfmix$dvec.y)/2-0.2,
+   #           label = paste0(round(quadrant_counts$average[quadrant_counts$quadrant == "Q2"], 1), ""),
+   #           size = 5, color = "black", fontface = "italic") +
+   #  annotate("text", x = min(dfmix$dvec.x)/2, y = min(dfmix$dvec.y)/2-0.2,
+   #           label = paste0(round(quadrant_counts$average[quadrant_counts$quadrant == "Q3"], 1), ""),
+   #           size = 5, color = "black", fontface = "italic") +
+   #  annotate("text", x = max(dfmix$dvec.x)/2, y = min(dfmix$dvec.y)/2 -0.2,
+   #           label = paste0(round(quadrant_counts$average[quadrant_counts$quadrant == "Q4"], 1), ""),
+   #           size = 5, color = "black", fontface = "italic")
+}
+
+
+  
+  # Return the plot
+  return(list(p,dfmix))
+}
+```
+
+
+```{r}
+summary_maelaf = summary_func(chi_maelaf, d_maelaf)
+summary_massf = summary_func(chi_massf, d_massf)
+summary_southf = summary_func(chi_southf, d_southf)
+summary_allf = summary_func(chi_allf, d_allf)
+
+```
+
+```{r}
+plot_d_pops(summary_maelaf,summary_southf,pval=0.05,per_kegg = 1)[[1]]
+#ggsave("R/maela_south.pdf", units = "cm")
+plot_d_pops(summary_maelaf,summary_massf,pval=0.05,per_kegg = 1)[[1]]
+#ggsave("R/maela_mass.pdf", units = "cm")
+plot_d_pops(summary_massf,summary_southf,pval=0.05,per_kegg = 1)[[1]]
+#ggsave("R/mass_south.pdf", units = "cm")
+
+
+
+```
+
+
+```{r}
+plot_d_pops(summary_maelaf,summary_southf,pval=0.05,per_kegg = 2)[[1]]
+ggsave("R/maela_south.png", units = "cm")
+plot_d_pops(summary_maelaf,summary_massf,pval=0.05,per_kegg = 2)[[1]]
+ggsave("R/maela_mass.png", units = "cm")
+plot_d_pops(summary_massf,summary_southf,pval=0.05,per_kegg = 2)[[1]]
+ggsave("R/mass_south.png", units = "cm")
+
+
+
+```
+
+
+```{r}
+annotate_summary=function(df1,dataa){
+  
+  map_annot_cat = setNames(data[,2],data[,1])
+  map_annot_desc = setNames(data[,3],data[,1])
+  map_annot_gene = setNames(data[,4],data[,1])
+  
+  if("pairsvec" %in% colnames(df1)){df1 <- tidyr::separate(df1, pairsvec, into = c("c1", "c2"), sep = "-")}
+
+
+  df1$c1_cat = map_annot_cat[df1$c1]
+  df1$c1_desc = map_annot_desc[df1$c1]
+  df1$c1_gene = map_annot_gene[df1$c1]
+  df1$c2_cat = map_annot_cat[df1$c2]
+  df1$c2_desc = map_annot_desc[df1$c2]
+  df1$c2_gene = map_annot_gene[df1$c2]
+  
+  
+  return(df1)
+}
+
+anno_summary_southf = annotate_summary(summary_southf,data)
+anno_summary_maelaf = annotate_summary(summary_maelaf,data)
+anno_summary_massf = annotate_summary(summary_massf,data)
+anno_summary_allf = annotate_summary(summary_allf,data)
+
+fanno_summary_southf = anno_summary_southf[anno_summary_southf$chipvec>3.20,]
+```
+
+
+```{r}
+
+tsouth1 = table(anno_summary_southf$c1_cat,anno_summary_southf$c2_cat) #add the opposite but plus is not working
+tsouth2 = table(anno_summary_southf$c2_cat,anno_summary_southf$c1_cat)
+tsouth=(tsouth1+tsouth2)
+for (type in colnames(tsouth)){
+  tsouth[,type] = tsouth[,type] *100/ table(data$V7)[type]
+}
+for (type in rownames(tsouth)){
+  tsouth[type,] = tsouth[type,] *100/ table(data$V7)[type]
+}
+
+```
+
+E	Amino Acid metabolis and transport
+F	Nucleotide metabolism and transport
+G	Carbohydrate metabolism and transport
+H	Coenzyme metabolis
+I	Lipid metabolism
+
+
+```{r}
+anno_summary_southf[is.na(anno_summary_southf)] = "NA"
+pairE = anno_summary_southf[(anno_summary_southf$c1_cat == "E") | (anno_summary_southf$c2_cat =="E"),]
+pairF = anno_summary_southf[(anno_summary_southf$c1_cat == "F") | (anno_summary_southf$c2_cat =="F"),]
+pairG = anno_summary_southf[(anno_summary_southf$c1_cat == "G") | (anno_summary_southf$c2_cat =="G"),]
+pairH = anno_summary_southf[(anno_summary_southf$c1_cat == "H") | (anno_summary_southf$c2_cat =="H"),]
+pairI = anno_summary_southf[(anno_summary_southf$c1_cat == "I") | (anno_summary_southf$c2_cat =="I"),]
+
+```
+
+
+```{r}
+dfpairs=summary_maelaf
+
+dfpairs$gene1 <- sub("^(.*)-(.*)$", "\\1", dfpairs$pairsvec)
+dfpairs$gene2 <- sub("^(.*)-(.*)$", "\\2", dfpairs$pairsvec)
+
+desc_map <- setNames(data$COG_category, data$X.query)
+
+# Then we can easily pick out the annotation for each gene:
+dfpairs$COG_gene1 <- desc_map[dfpairs$gene1]
+dfpairs$COG_gene2 <- desc_map[dfpairs$gene2]
+
+dfpairs$same_category <- (dfpairs$COG_gene1 == dfpairs$COG_gene2)
+```
+
+
+## Figure S11
+```{r}
+
+plot_d_pops(summary_maelaf,summary_southf,pval=0.05)[[1]]
+plot_d_pops(summary_maelaf,summary_massf,pval=0.05)[[1]]
+plot_d_pops(summary_massf,summary_southf,pval=0.05)[[1]]
+
+
+
+```
+
+```{r}
+df1=summary_maelaf
+df2=summary_southf
+
+#to find number of genes
+dff = rbind(df1,df2)
+split_values <- strsplit(dff$pairsvec, "-")
+unique_values <- unique(unlist(lapply(split_values, function(x) {
+as.numeric(sub("c", "", x))
+})))
+
+# Find the number of unique values
+num_unique_values <- length(unique_values)
+print(num_unique_values)
+
+```
+
+```{r}
+
+wide_data_filtered_south2007 = wide_data_filtered_south[imap_year[rownames(wide_data_filtered_south)] == "2007",]
+wide_data_filtered_south2011 = wide_data_filtered_south[imap_year[rownames(wide_data_filtered_south)] == "2011",]
+
+# c_southf2007=Dprime2matrix(wide_data_filtered_south2007)
+# d_southf2007=Dprime2matrix(wide_data_filtered_south2007)
+# chi_southf2007=chisquarematrix(wide_data_filtered_south2007)
+# c_southf2011=Dprime2matrix(wide_data_filtered_south2011)
+# d_southf2011=Dprime2matrix(wide_data_filtered_south2011)
+# chi_southf2011=chisquarematrix(wide_data_filtered_south2011)
+
+
+
+# write.csv(c_southf2007,paste0("R/c_southf2007_",toString(thresh),".csv"))
+# write.csv(d_southf2007,paste0("R/d_southf2007_",toString(thresh),".csv"))
+# write.csv(chi_southf2007,paste0("R/chi_southf2007_",toString(thresh),".csv"))
+# write.csv(c_southf2011,paste0("R/c_southf2011_",toString(thresh),".csv"))
+# write.csv(d_southf2011,paste0("R/d_southf2011_",toString(thresh),".csv"))
+# write.csv(chi_southf2011,paste0("R/chi_southf2011_",toString(thresh),".csv"))
+
+
+c_southf2007 = read.table(paste0("R/c_southf2007_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+d_southf2007 = read.table(paste0("R/d_southf2007_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+chi_southf2007 = read.table(paste0("R/chi_southf2007_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+c_southf2011 = read.table(paste0("R/c_southf2011_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+d_southf2011 = read.table(paste0("R/d_southf2011_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+chi_southf2011 = read.table(paste0("R/chi_southf2011_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+
+
+
+summary_southf2007 = summary_func(chi_southf2007, d_southf2007)
+summary_southf2011 = summary_func(chi_southf2011, d_southf2011)
+
+plot_d_pops(summary_southf2007,summary_southf2011,pval=0.05)[[1]]
+ggsave("R/pre_post_vaxx.pdf", units = "cm", width=20, height=16)
+
+south_comp = plot_d_pops(summary_southf2007,summary_southf2011,pval=0.05)[[2]]
+
+south_comp = south_comp[south_comp$quadrant == "Q2" | south_comp$quadrant == "Q4",]
+south_comp = annotate_summary(south_comp)
+```
+
+
+```{r}
+
+wide_data_filtered_mass2001 = wide_data_filtered_mass[imap_year[rownames(wide_data_filtered_mass)] == "2001",]
+wide_data_filtered_mass2007 = wide_data_filtered_mass[imap_year[rownames(wide_data_filtered_mass)] == "2007",]
+wide_data_filtered_mass2004 = wide_data_filtered_mass[imap_year[rownames(wide_data_filtered_mass)] == "2004",]
+
+# c_massf2001=Dprime2matrix(wide_data_filtered_mass2001)
+# d_massf2001=Dprime2matrix(wide_data_filtered_mass2001)
+# chi_massf2001=chisquarematrix(wide_data_filtered_mass2001)
+# c_massf2004=Dprime2matrix(wide_data_filtered_mass2004)
+# d_massf2004=Dprime2matrix(wide_data_filtered_mass2004)
+# chi_massf2004=chisquarematrix(wide_data_filtered_mass2004)
+# c_massf2007=Dprime2matrix(wide_data_filtered_mass2007)
+# d_massf2007=Dprime2matrix(wide_data_filtered_mass2007)
+# chi_massf2007=chisquarematrix(wide_data_filtered_mass2007)
+
+
+
+# write.csv(c_massf2001,paste0("R/c_massf2001_",toString(thresh),".csv"))
+# write.csv(d_massf2001,paste0("R/d_massf2001_",toString(thresh),".csv"))
+# write.csv(chi_massf2001,paste0("R/chi_massf2001_",toString(thresh),".csv"))
+# write.csv(c_massf2004,paste0("R/c_massf2004_",toString(thresh),".csv"))
+# write.csv(d_massf2004,paste0("R/d_massf2004_",toString(thresh),".csv"))
+# write.csv(chi_massf2004,paste0("R/chi_massf2004_",toString(thresh),".csv"))
+# write.csv(c_massf2007,paste0("R/c_massf2007_",toString(thresh),".csv"))
+# write.csv(d_massf2007,paste0("R/d_massf2007_",toString(thresh),".csv"))
+# write.csv(chi_massf2007,paste0("R/chi_massf2007_",toString(thresh),".csv"))
+
+
+c_massf2001 = read.table(paste0("R/c_massf2001_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+d_massf2001 = read.table(paste0("R/d_massf2001_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+chi_massf2001 = read.table(paste0("R/chi_massf2001_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+c_massf2004 = read.table(paste0("R/c_massf2004_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+d_massf2004 = read.table(paste0("R/d_massf2004_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+chi_massf2004 = read.table(paste0("R/chi_massf2004_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+c_massf2007 = read.table(paste0("R/c_massf2007_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+d_massf2007 = read.table(paste0("R/d_massf2007_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+chi_massf2007 = read.table(paste0("R/chi_massf2007_",toString(thresh),".csv"), sep=",",header=TRUE, row.names = 1)
+
+summary_massf2001 = summary_func(chi_massf2001, d_massf2001)
+summary_massf2004 = summary_func(chi_massf2004, d_massf2004)
+summary_massf2007 = summary_func(chi_massf2007, d_massf2007)
+
+
+```
+
+```{r}
+plot_d_pops(summary_massf2001,summary_massf2004,pval=0.05)[[1]]
+plot_d_pops(summary_massf2001,summary_massf2007,pval=0.05)[[1]]
+plot_d_pops(summary_massf2004,summary_massf2007,pval=0.05)[[1]]
+
+mass_comp1 = plot_d_pops(summary_massf2001,summary_massf2004,pval=0.05)[[2]]
+mass_comp1 = mass_comp1[mass_comp1$quadrant == "Q2" | mass_comp1$quadrant == "Q4",]
+mass_comp1 = annotate_summary(mass_comp1)
+
+mass_comp2 = plot_d_pops(summary_massf2001,summary_massf2007,pval=0.05)[[2]]
+ggsave("R/pre_post_vax.pdf", units = "cm")
+mass_comp2 = mass_comp2[mass_comp2$quadrant == "Q2" | mass_comp2$quadrant == "Q4",]
+mass_comp2 = annotate_summary(mass_comp2)
+
+mass_comp3 = plot_d_pops(summary_massf2004,summary_massf2007,pval=0.05)[[2]]
+mass_comp3 = mass_comp3[mass_comp3$quadrant == "Q2" | mass_comp3$quadrant == "Q4",]
+mass_comp3 = annotate_summary(mass_comp3)
+
+anno_summary_mass2001f = annotate_summary(summary_massf2001)
+anno_summary_mass2007f = annotate_summary(summary_massf2007)
+
+```
+
+
+```{r}
+dfmix=plot_d_pops(summary_southf,summary_massf,pval=0.05)[[2]]
+dfmix <- separate(dfmix, col = pairsvec, into = c("First", "Second"), sep = "-")
+dfmix=dfmix[,c("First", "Second","dvec.x","dvec.y")]
+
+# dfmix <- rbind(dfmix, data.frame(First = "GeneA", Second = "GeneB", dvec.x = 0.9, dvec.y = -0.9))
+# 
+# # Pair between GeneC and GeneD: negative in X, positive in Y
+# dfmix <- rbind(dfmix, data.frame(First = "GeneC", Second = "GeneD", dvec.x = 0.9, dvec.y = -0.9))
+# 
+# # Inter-pair between GeneA and GeneC: positive in X, negative in Y
+# dfmix <- rbind(dfmix, data.frame(First = "GeneA", Second = "GeneC", dvec.x = -0.9, dvec.y = 0.9))
+# 
+# # Inter-pair between GeneB and GeneD: negative in X, positive in Y
+# dfmix <- rbind(dfmix, data.frame(First = "GeneB", Second = "GeneD", dvec.x = -0.9, dvec.y = 0.9))
+
+# Create the list of positively linked pairs in population x
+pos_pairs_x <- dfmix[dfmix$dvec.x > 0, c("First", "Second")]
+
+# Create the list of positively linked pairs in population y
+pos_pairs_y <- dfmix[dfmix$dvec.y > 0, c("First", "Second")]
+
+
+
+#dfmix$First = sample(dfmix$First) #this is better because it keeps the association between the lds in different pops
+#dfmix$Second = sample(dfmix$Second)
+#dfmix$dvec.x = sample(dfmix$dvec.x) #i think this is wrong because it creates A LOT MORE x>0 y<0 than what you see
+#dfmix$dvec.y = sample(dfmix$dvec.y)
+
+
+```
+
+
+
+
+
+
+## Figure 5b and 5c, S12
+## compare LD changes from strong to other pop or shuffled.
+## TRUE sets only absolute values, FALSE is all, remember to change the name
+```{r}
+# Define population pairs
+population_pairs <- list(
+  c("mass", "maela"),
+  c("mass", "south"), 
+  c("maela", "south")
+)
+
+absolu=TRUE
+print(absolu)
+
+# Define population pairs
+population_pairs <- list(
+  c("mass", "maela"),
+  c("mass", "south"), 
+  c("maela", "south")
+)
+
+# Modified analysis function with LD filtering
+analyze_pair <- function(pair) {
+  print(absolu)
+  pop1_name <- pair[1]
+  pop2_name <- pair[2]
+  
+  # Load presence-absence matrices
+  pop1_pa <- get(paste0("wide_data_filtered_", pop1_name))
+  pop2_pa <- get(paste0("wide_data_filtered_", pop2_name))
+  
+  # Find common genes within frequency thresholds
+  common_genes <- intersect(
+    colnames(pop1_pa)[colSums(pop1_pa) > fmin*nrow(pop1_pa) & colSums(pop1_pa) < fmax*nrow(pop1_pa)],
+    colnames(pop2_pa)[colSums(pop2_pa) > fmin*nrow(pop2_pa) & colSums(pop2_pa) < fmax*nrow(pop2_pa)]
+  )
+  
+  # Subset matrices
+  pop1_sub <- pop1_pa[, common_genes]
+  pop2_sub <- pop2_pa[, common_genes]
+  
+  # Compute D' matrices
+  compute_dprime <- function(df) {
+    d <- Dprime2matrix(df)
+    d[upper.tri(d)]
+  }
+  
+  pop1_d <- compute_dprime(pop1_sub)
+  pop2_d <- compute_dprime(pop2_sub)
+  
+  # Identify significant LD pairs
+  pop1_strong <- which(abs(pop1_d) > 0.6)
+  pop2_strong <- which(abs(pop2_d) > 0.6)
+  
+  # Column 1: Pop1 strong pairs
+  pop2_shuffled <- pop2_sub
+  pop2_shuffled[] <- lapply(pop2_shuffled, sample)
+  pop2_shuffled_d <- compute_dprime(pop2_shuffled)
+  
+  if(absolu ==TRUE){col1_data <- data.frame(
+    Difference = c(
+      abs(pop1_d[pop1_strong] - pop2_d[pop1_strong]),  # Observed difference
+      abs(pop1_d[pop1_strong] - pop2_shuffled_d[pop1_strong])  # Pop2 shuffled
+    ),
+    Type = rep(c("Observed", "Shuffled population 2"), 
+              c(length(pop1_strong), length(pop1_strong)))
+  )}
+  else{col1_data <- data.frame(
+    Difference = c(
+      pop1_d[pop1_strong] - pop2_d[pop1_strong],  # Observed difference
+      pop1_d[pop1_strong] - pop2_shuffled_d[pop1_strong]  # Pop2 shuffled
+    ),
+    Type = rep(c("Observed", "Shuffled population 2"), 
+              c(length(pop1_strong), length(pop1_strong)))
+  )}
+  
+  # Column 2: Pop2 strong pairs
+  pop1_shuffled <- pop1_sub
+  pop1_shuffled[] <- lapply(pop1_shuffled, sample)
+  pop1_shuffled_d <- compute_dprime(pop1_shuffled)
+  
+  if(absolu ==TRUE){col2_data <- data.frame(
+    Difference = c(
+      abs(pop2_d[pop2_strong] - pop1_d[pop2_strong]),  # Observed difference
+      abs(pop2_d[pop2_strong] - pop1_shuffled_d[pop2_strong])  # Pop1 shuffled
+    ),
+    Type = rep(c("Observed", "Shuffled population 2"), 
+              c(length(pop2_strong), length(pop2_strong)))
+  )}
+  
+  else{col2_data <- data.frame(
+    Difference = c(
+      pop2_d[pop2_strong] - pop1_d[pop2_strong],  # Observed difference
+      pop2_d[pop2_strong] - pop1_shuffled_d[pop2_strong]  # Pop1 shuffled
+    ),
+    Type = rep(c("Observed", "Shuffled population 2"), 
+              c(length(pop2_strong), length(pop2_strong)))
+  )}
+  
+  list(col1 = col1_data, col2 = col2_data)
+}
+
+# Create visualization function
+create_comparison_plot <- function(data, title) {
+  ggplot(data, aes(x = Difference, color = Type)) +
+    geom_density(linewidth = 0.8) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+    scale_color_manual(values = c("Observed" = "#1b9e77", 
+                                "Shuffled population 2" = "#d95f02")) +
+    xlim(ifelse(absolu==TRUE,0,-2), 2) + 
+    ylim(0, ifelse(absolu==TRUE,3.5,1.75)) +
+    labs(title = title,  x = expression(paste("difference in linkage between populations ", Delta*D*"'")), y = "Density") +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.title = element_text(hjust = 0.5, size = 11, face = "bold"),
+      axis.text = element_text(size = 9)
+    )
+}
+
+# Generate plot data
+plot_data <- lapply(population_pairs, analyze_pair)
+
+# Create all plots in order
+all_plots <- list()
+for (i in seq_along(plot_data)) {
+  pair <- population_pairs[[i]]
+  
+  # Column 1 plot (Pop1 strong pairs)
+  col1_plot <- create_comparison_plot(
+    plot_data[[i]]$col1,
+    paste0(toupper(pair[1]), " vs ", toupper(pair[2]), "\nStrong LD in ", toupper(pair[1]))
+  )
+  
+  # Column 2 plot (Pop2 strong pairs)
+  col2_plot <- create_comparison_plot(
+    plot_data[[i]]$col2,
+    paste0(toupper(pair[1]), " vs ", toupper(pair[2]), "\nStrong LD in ", toupper(pair[2]))
+  )
+  
+  all_plots <- c(all_plots, list(col1_plot, col2_plot))
+}
+
+# Arrange final grid
+grid.arrange(
+  grobs = all_plots,
+  nrow = 3,
+  ncol = 2,
+  widths = c(1, 1),
+  heights = rep(1, 3)
+)
+
+
+
+# Save the grid arrangement to a variable first
+final_plot <- grid.arrange(
+  grobs = all_plots,
+  nrow = 3,
+  ncol = 2,
+  widths = c(1, 1),
+  heights = rep(1, 3)
+)
+
+# Then save using the arranged plot object
+ggsave("LD_comparison_grid_filtered_abs.pdf", 
+       plot = final_plot,  # Specify the plot object
+       width = 12, 
+       height = 15, 
+       dpi = 300)
+
+
+```   
+## Figure S13
+```{r}
+# Define single population pair
+population_pairs <- list(
+  c("mass2001", "mass2007")
+)
+
+absolu <- TRUE
+print(absolu)
+
+# Modified analysis function for two populations
+analyze_pair <- function(pair) {
+  pop1_name <- pair[1]
+  pop2_name <- pair[2]
+  
+  # Load presence-absence matrices
+  pop1_pa <- get(paste0("wide_data_filtered_", pop1_name))
+  pop2_pa <- get(paste0("wide_data_filtered_", pop2_name))
+  
+  # Find common genes within frequency thresholds
+  common_genes <- intersect(
+    colnames(pop1_pa)[colSums(pop1_pa) > fmin*nrow(pop1_pa) & colSums(pop1_pa) < fmax*nrow(pop1_pa)],
+    colnames(pop2_pa)[colSums(pop2_pa) > fmin*nrow(pop2_pa) & colSums(pop2_pa) < fmax*nrow(pop2_pa)]
+  )
+  
+  # Subset matrices
+  pop1_sub <- pop1_pa[, common_genes]
+  pop2_sub <- pop2_pa[, common_genes]
+  
+  # Compute D' matrices
+  compute_dprime <- function(df) {
+    d <- Dprime2matrix(df)
+    d[upper.tri(d)]
+  }
+  
+  pop1_d <- compute_dprime(pop1_sub)
+  pop2_d <- compute_dprime(pop2_sub)
+  
+  # Identify significant LD pairs
+  pop1_strong <- which(abs(pop1_d) > 0.6)
+  pop2_strong <- which(abs(pop2_d) > 0.6)
+  
+  # Column 1: Pop1 strong pairs
+  pop2_shuffled <- pop2_sub
+  pop2_shuffled[] <- lapply(pop2_shuffled, sample)
+  pop2_shuffled_d <- compute_dprime(pop2_shuffled)
+  
+  if(absolu == TRUE){
+    col1_data <- data.frame(
+      Difference = c(
+        abs(pop1_d[pop1_strong] - pop2_d[pop1_strong]),  # Observed
+        abs(pop1_d[pop1_strong] - pop2_shuffled_d[pop1_strong])  # Shuffled
+      ),
+      Type = rep(c("Observed", "Shuffled population 2"), 
+                c(length(pop1_strong), length(pop1_strong)))
+    )
+  } else {
+    col1_data <- data.frame(
+      Difference = c(
+        pop1_d[pop1_strong] - pop2_d[pop1_strong],  # Observed
+        pop1_d[pop1_strong] - pop2_shuffled_d[pop1_strong]  # Shuffled
+      ),
+      Type = rep(c("Observed", "Shuffled population 2"), 
+                c(length(pop1_strong), length(pop1_strong)))
+    )
+  }
+  
+  # Column 2: Pop2 strong pairs
+  pop1_shuffled <- pop1_sub
+  pop1_shuffled[] <- lapply(pop1_shuffled, sample)
+  pop1_shuffled_d <- compute_dprime(pop1_shuffled)
+  
+  if(absolu == TRUE){
+    col2_data <- data.frame(
+      Difference = c(
+        abs(pop2_d[pop2_strong] - pop1_d[pop2_strong]),  # Observed
+        abs(pop2_d[pop2_strong] - pop1_shuffled_d[pop2_strong])  # Shuffled
+      ),
+      Type = rep(c("Observed", "Shuffled population 1"), 
+                c(length(pop2_strong), length(pop2_strong)))
+    )
+  } else {
+    col2_data <- data.frame(
+      Difference = c(
+        pop2_d[pop2_strong] - pop1_d[pop2_strong],  # Observed
+        pop2_d[pop2_strong] - pop1_shuffled_d[pop2_strong]  # Shuffled
+      ),
+      Type = rep(c("Observed", "Shuffled population 1"), 
+                c(length(pop2_strong), length(pop2_strong)))
+    )
+  }
+  
+  list(col1 = col1_data, col2 = col2_data)
+}
+
+# Create visualization function (adjusted x-axis limits)
+create_comparison_plot <- function(data, title) {
+  ggplot(data, aes(x = Difference, color = Type)) +
+    geom_density(linewidth = 0.8) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+    scale_color_manual(values = c("Observed" = "#1b9e77", 
+                                "Shuffled population 1" = "#d95f02",
+                                "Shuffled population 2" = "#d95f02")) +
+    xlim(ifelse(absolu, 0, -2), 2) + 
+    ylim(0, ifelse(absolu, 3.5, 1.75)) +
+    labs(title = title,  
+         x = expression(paste("Difference in linkage ", Delta*D*"'")), 
+         y = "Density") +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.title = element_text(hjust = 0.5, size = 11, face = "bold"),
+      axis.text = element_text(size = 9)
+    )
+}
+
+# Generate plot data
+plot_data <- lapply(population_pairs, analyze_pair)
+
+# Create both plots
+all_plots <- list()
+for (i in seq_along(plot_data)) {
+  pair <- population_pairs[[i]]
+  
+  col1_plot <- create_comparison_plot(
+    plot_data[[i]]$col1,
+    "pre-(2001) vs post-vaccination(2007) \nStrong LD in 2001"
+  )
+  
+  col2_plot <- create_comparison_plot(
+    plot_data[[i]]$col2,
+    "pre-(2001) vs post-vaccination(2007) \nStrong LD in 2007"
+  )
+  
+  all_plots <- c(all_plots, list(col1_plot, col2_plot))
+}
+
+# Arrange and save final plot
+final_plot <- grid.arrange(
+  grobs = all_plots,
+  nrow = 1,
+  ncol = 2,
+  widths = c(1, 1)
+)
+
+ggsave("LD_comparison_mass_years.pdf", 
+       plot = final_plot,
+       width = 14,  # Wider to accommodate side-by-side plots
+       height = 5,  # Shorter height
+       dpi = 300)
+
+
+```   
+
+### same with 10 shuffles, its not useful, you dont even see the ribbon around the shuffled line because so similar across reps
+```{r}
+# Modified analysis function with 10 shuffles
+analyze_pair <- function(pair) {
+  pop1_name <- pair[1]
+  pop2_name <- pair[2]
+  n_shuffles <- 10
+  
+  # Load presence-absence matrices
+  pop1_pa <- get(paste0("wide_data_filtered_", pop1_name))
+  pop2_pa <- get(paste0("wide_data_filtered_", pop2_name))
+  
+  # Find common genes within frequency thresholds
+  common_genes <- intersect(
+    colnames(pop1_pa)[colSums(pop1_pa) > fmin*nrow(pop1_pa) & colSums(pop1_pa) < fmax*nrow(pop1_pa)],
+    colnames(pop2_pa)[colSums(pop2_pa) > fmin*nrow(pop2_pa) & colSums(pop2_pa) < fmax*nrow(pop2_pa)]
+  )
+  
+  # Subset matrices
+  pop1_sub <- pop1_pa[, common_genes]
+  pop2_sub <- pop2_pa[, common_genes]
+  
+  # Compute D' matrices
+  compute_dprime <- function(df) {
+    d <- Dprime2matrix(df)
+    d[upper.tri(d)]
+  }
+  
+  pop1_d <- compute_dprime(pop1_sub)
+  pop2_d <- compute_dprime(pop2_sub)
+  
+  # Identify significant LD pairs
+  pop1_strong <- which(abs(pop1_d) > 0.6)
+  pop2_strong <- which(abs(pop2_d) > 0.6)
+  
+  # Density interpolation function
+  interpolate_density <- function(dens, x_grid) {
+    approx(dens$x, dens$y, xout = x_grid, rule = 2)$y
+  }
+  
+  # Common x-axis grid
+  x_grid <- seq(-2, 2, length.out = 512)
+  
+  # Column 1: Pop1 strong pairs -------------------------------------------------
+  # Observed data
+  obs_diff_col1 <- pop1_d[pop1_strong] - pop2_d[pop1_strong]
+  obs_dens_col1 <- density(obs_diff_col1, from = -2, to = 2, n = 512)
+  
+  # Shuffle pop2 10 times
+  shuffled_dens_col1 <- matrix(nrow = length(x_grid), ncol = n_shuffles)
+  for (i in 1:n_shuffles) {
+    pop2_shuffled <- pop2_sub
+    pop2_shuffled[] <- lapply(pop2_shuffled, sample)
+    pop2_shuffled_d <- compute_dprime(pop2_shuffled)
+    shuf_diff <- pop1_d[pop1_strong] - pop2_shuffled_d[pop1_strong]
+    shuf_dens <- density(shuf_diff, from = -2, to = 2, n = 512)
+    shuffled_dens_col1[,i] <- interpolate_density(shuf_dens, x_grid)
+  }
+  
+  # Column 2: Pop2 strong pairs -------------------------------------------------
+  # Observed data
+  obs_diff_col2 <- pop2_d[pop2_strong] - pop1_d[pop2_strong]
+  obs_dens_col2 <- density(obs_diff_col2, from = -2, to = 2, n = 512)
+  
+  # Shuffle pop1 10 times
+  shuffled_dens_col2 <- matrix(nrow = length(x_grid), ncol = n_shuffles)
+  for (i in 1:n_shuffles) {
+    pop1_shuffled <- pop1_sub
+    pop1_shuffled[] <- lapply(pop1_shuffled, sample)
+    pop1_shuffled_d <- compute_dprime(pop1_shuffled)
+    shuf_diff <- pop2_d[pop2_strong] - pop1_shuffled_d[pop2_strong]
+    shuf_dens <- density(shuf_diff, from = -2, to = 2, n = 512)
+    shuffled_dens_col2[,i] <- interpolate_density(shuf_dens, x_grid)
+  }
+  
+  # Return formatted data
+  list(
+    col1 = list(
+      obs = data.frame(x = obs_dens_col1$x, y = obs_dens_col1$y),
+      shuf = data.frame(
+        x = x_grid,
+        mean = rowMeans(shuffled_dens_col1),
+        sd = apply(shuffled_dens_col1, 1, sd)
+      )
+    ),
+    col2 = list(
+      obs = data.frame(x = obs_dens_col2$x, y = obs_dens_col2$y),
+      shuf = data.frame(
+        x = x_grid,
+        mean = rowMeans(shuffled_dens_col2),
+        sd = apply(shuffled_dens_col2, 1, sd)
+      )
+    )
+  )
+}
+
+# Modified plotting function
+create_comparison_plot <- function(data, title) {
+  ggplot() +
+    # Observed distribution
+    geom_line(
+      data = data$obs,
+      aes(x = x, y = y, color = "Observed"),
+      linewidth = 1.2
+    ) +
+    # Shuffled distribution
+    geom_ribbon(
+      data = data$shuf,
+      aes(x = x, ymin = mean - sd, ymax = mean + sd, fill = "Shuffled"),
+      alpha = 0.3
+    ) +
+    geom_line(
+      data = data$shuf,
+      aes(x = x, y = mean, color = "Shuffled"),
+      linewidth = 1.2,
+      linetype = "dashed"
+    ) +
+    scale_color_manual(
+      values = c("Observed" = "#1b9e77", "Shuffled" = "#d95f02"),
+      name = "Distribution"
+    ) +
+    scale_fill_manual(
+      values = c("Shuffled" = "#d95f02"),
+      name = "Shuffled SD"
+    ) +
+    labs(title = title, x = expression(Delta*D*"'"), y = "Density") +
+    xlim(-2, 2) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.title = element_text(hjust = 0.5, size = 11, face = "bold"),
+      axis.text = element_text(size = 9)
+    )
+}
+
+# Generate plot data
+plot_data <- lapply(population_pairs, analyze_pair)
+
+# Create all plots
+all_plots <- list()
+for (i in seq_along(plot_data)) {
+  pair <- population_pairs[[i]]
+  
+  # Column 1 plot
+  col1_plot <- create_comparison_plot(
+    plot_data[[i]]$col1,
+    paste0(toupper(pair[1]), " vs ", toupper(pair[2]), "\nStrong LD in ", toupper(pair[1]))
+  )
+  
+  # Column 2 plot
+  col2_plot <- create_comparison_plot(
+    plot_data[[i]]$col2,
+    paste0(toupper(pair[1]), " vs ", toupper(pair[2]), "\nStrong LD in ", toupper(pair[2]))
+  )
+  
+  all_plots <- c(all_plots, list(col1_plot, col2_plot))
+}
+
+# Arrange final grid
+grid.arrange(
+  grobs = all_plots,
+  nrow = 3,
+  ncol = 2,
+  widths = c(1, 1),
+  heights = rep(1, 3)
+)
+
+# Save output
+ggsave("LD_comparison_grid_10shuffles.png", width = 12, height = 15, dpi = 300)
+
+```
+
+
+
+
+
+## test for reversal, first precompute the matrices
+```{r}
+# Precompute and store all D' matrices first
+population_names <- c("mass", "maela", "south")
+
+# Initialize storage list
+d_prime_mats <- list()
+
+# Compute and store D' matrices
+for (pop in population_names) {
+  pa_matrix <- get(paste0("wide_data_filtered_", pop))
+  d_prime_mats[[pop]] <- Dprime2matrix(pa_matrix)
+}
+```
+
+
+
+
+
+## Tables s1 and s2
+```{r}
+library(parallel)
+library(foreach)
+library(doSNOW)
+library(tidyverse)
+
+# Global parameters
+fmin <- 0.1
+fmax <- 0.9
+threshold <- 0.6
+n_perm <- 1000
+population_names <- c("mass", "maela", "south")
+
+# Main analysis function
+analyze_pair <- function(pop1, pop2, shuffle_pop = c("pop1", "pop2")) {
+  # 1. Load and filter data -------------------------------------------------
+  pa1 <- get(paste0("wide_data_filtered_", pop1))
+  pa2 <- get(paste0("wide_data_filtered_", pop2))
+  
+  # Find common genes with valid frequencies
+  common_genes <- intersect(
+    colnames(pa1)[colSums(pa1) > fmin*nrow(pa1) & colSums(pa1) < fmax*nrow(pa1)],
+    colnames(pa2)[colSums(pa2) > fmin*nrow(pa2) & colSums(pa2) < fmax*nrow(pa2)]
+  )
+  
+  if(length(common_genes) < 2) {
+    warning("Skipping ", pop1, "-", pop2, ": Insufficient common genes (", 
+            length(common_genes), ")")
+    return(NULL)
+  }
+  
+  # 2. Prepare data ---------------------------------------------------------
+  fixed_pa <- pa1[, common_genes]
+  target_pa <- pa2[, common_genes]
+  
+  if(shuffle_pop == "pop1") {
+    tmp <- fixed_pa
+    fixed_pa <- target_pa
+    target_pa <- tmp
+  }
+  
+  # Compute fixed population D'
+  fixed_d <- Dprime2matrix(fixed_pa)
+  upper_tri <- upper.tri(fixed_d)
+  strong_indices <- which(abs(fixed_d[upper_tri]) > threshold)
+  
+  if(length(strong_indices) == 0) {
+    warning("No strong pairs in fixed population ", 
+            ifelse(shuffle_pop == "pop1", pop2, pop1))
+    return(NULL)
+  }
+  
+  # Get gene pairs from indices
+  pairs <- which(upper_tri, arr.ind = TRUE)[strong_indices, ]
+  gene_pairs <- tibble(
+    gene1 = common_genes[pairs[, "row"]],
+    gene2 = common_genes[pairs[, "col"]],
+    fixed_Dprime = fixed_d[upper_tri][strong_indices]
+  )
+  
+  # 3. Parallel setup -------------------------------------------------------
+  cl <- makeCluster(detectCores() - 1)
+  on.exit({
+    stopCluster(cl)
+    closeAllConnections()
+  }, add = TRUE)
+  registerDoSNOW(cl)
+  
+  # Export required variables and functions
+  clusterExport(cl, c("threshold", "fmin", "fmax", "Dprime2matrix"), 
+               envir = environment())
+  clusterEvalQ(cl, library(tidyverse))
+  
+  # 4. Permutation analysis -------------------------------------------------
+  results <- foreach(i = 1:n_perm, .combine = rbind) %dopar% {
+    shuffled <- as.data.frame(lapply(target_pa, sample))
+    
+    rev_count <- 0
+    cons_count <- 0
+    
+    for(p in 1:nrow(gene_pairs)) {
+      g1 <- shuffled[[gene_pairs$gene1[p]]]
+      g2 <- shuffled[[gene_pairs$gene2[p]]]
+      
+      tbl <- table(factor(g1, 0:1), factor(g2, 0:1))
+      n <- sum(tbl)
+      p1 <- sum(g1)/n
+      p2 <- sum(g2)/n
+      D <- (tbl["1","1"]/n) - p1*p2
+      Dmax <- if(D > 0) min(p1*(1-p2), (1-p1)*p2) else min(p1*p2, (1-p1)*(1-p2))
+      d_shuffled <- ifelse(Dmax == 0, 0, D/Dmax)
+      
+      orig_d <- gene_pairs$fixed_Dprime[p]
+      if(orig_d > threshold) {
+        if(d_shuffled < -threshold) rev_count <- rev_count + 1
+        if(d_shuffled > threshold) cons_count <- cons_count + 1
+      } else if(orig_d < -threshold) {
+        if(d_shuffled > threshold) rev_count <- rev_count + 1 
+        if(d_shuffled < -threshold) cons_count <- cons_count + 1
+      }
+    }
+    
+    tibble(
+      pop1 = pop1,
+      pop2 = pop2,
+      shuffle = shuffle_pop,
+      permutation = i,
+      reversal = rev_count,
+      conservation = cons_count,
+      total_pairs = nrow(gene_pairs)
+    )
+  }
+  
+  # 5. Calculate observed values -------------------------------------------
+  target_d <- Dprime2matrix(target_pa)
+  observed <- list(
+    reversal = sum(
+      (gene_pairs$fixed_Dprime > threshold & target_d[upper_tri][strong_indices] < -threshold) |
+      (gene_pairs$fixed_Dprime < -threshold & target_d[upper_tri][strong_indices] > threshold)
+    ),
+    conservation = sum(
+      (gene_pairs$fixed_Dprime > threshold & target_d[upper_tri][strong_indices] > threshold) |
+      (gene_pairs$fixed_Dprime < -threshold & target_d[upper_tri][strong_indices] < -threshold)
+    )
+  )
+  
+  # 6. Combine results -----------------------------------------------------
+  bind_rows(
+    tibble(
+      pop1 = pop1,
+      pop2 = pop2,
+      shuffle = shuffle_pop,
+      permutation = 0,
+      reversal = observed$reversal,
+      conservation = observed$conservation,
+      total_pairs = nrow(gene_pairs)
+    ),
+    results
+  )
+}
+
+# Process all population pairs in both directions -------------------------
+all_results <- combn(population_names, 2, simplify = FALSE) %>% 
+  map_df(~{
+    pair <- .x
+    bind_rows(
+      analyze_pair(pair[1], pair[2], "pop2"),
+      analyze_pair(pair[1], pair[2], "pop1")
+    )
+  }) %>% 
+  filter(!is.null(total_pairs))  # Remove empty results
+
+# Save consolidated results -----------------------------------------------
+write_csv(all_results, "population_linkage_analysis_results.csv")
+
+
+```
+
+## ttemp debug above
+```{r}
+# Global parameters
+fmin <- 0.1
+fmax <- 0.9
+threshold <- 0.6
+n_perm <- 1000
+population_names <- c("mass2001", "mass2007")
+
+# Main analysis function
+analyze_pair <- function(pop1, pop2, shuffle_pop = c("pop1", "pop2")) {
+  # 1. Load and filter data -------------------------------------------------
+  pa1 <- get(paste0("wide_data_filtered_", pop1))
+  pa2 <- get(paste0("wide_data_filtered_", pop2))
+  
+  # Find common genes with valid frequencies
+  common_genes <- intersect(
+    colnames(pa1)[colSums(pa1) > fmin*nrow(pa1) & colSums(pa1) < fmax*nrow(pa1)],
+    colnames(pa2)[colSums(pa2) > fmin*nrow(pa2) & colSums(pa2) < fmax*nrow(pa2)]
+  )
+  
+  if(length(common_genes) < 2) {
+    warning("Skipping ", pop1, "-", pop2, ": Insufficient common genes (", 
+            length(common_genes), ")")
+    return(NULL)
+  }
+  
+  # 2. Prepare data ---------------------------------------------------------
+  fixed_pa <- pa1[, common_genes]
+  target_pa <- pa2[, common_genes]
+  
+  if(shuffle_pop == "pop1") {
+    tmp <- fixed_pa
+    fixed_pa <- target_pa
+    target_pa <- tmp
+  }
+  
+  # Compute fixed population D'
+  fixed_d <- Dprime2matrix(fixed_pa)
+  upper_tri <- upper.tri(fixed_d)
+  strong_indices <- which(abs(fixed_d[upper_tri]) > threshold)
+  
+  if(length(strong_indices) == 0) {
+    warning("No strong pairs in fixed population ", 
+            ifelse(shuffle_pop == "pop1", pop2, pop1))
+    return(NULL)
+  }
+  
+  # Get gene pairs from indices
+  pairs <- which(upper_tri, arr.ind = TRUE)[strong_indices, ]
+  gene_pairs <- tibble(
+    gene1 = common_genes[pairs[, "row"]],
+    gene2 = common_genes[pairs[, "col"]],
+    fixed_Dprime = fixed_d[upper_tri][strong_indices]
+  )
+  
+  # 3. Parallel setup -------------------------------------------------------
+  cl <- makeCluster(detectCores() - 1)
+  on.exit({
+    stopCluster(cl)
+    closeAllConnections()
+  }, add = TRUE)
+  registerDoSNOW(cl)
+  
+  # Export required variables and functions
+  clusterExport(cl, c("threshold", "fmin", "fmax", "Dprime2matrix"), 
+               envir = environment())
+  clusterEvalQ(cl, library(tidyverse))
+  
+  # 4. Permutation analysis -------------------------------------------------
+  results <- foreach(i = 1:n_perm, .combine = rbind) %dopar% {
+    shuffled <- as.data.frame(lapply(target_pa, sample))
+    
+    rev_count <- 0
+    cons_count <- 0
+    
+    for(p in 1:nrow(gene_pairs)) {
+      g1 <- shuffled[[gene_pairs$gene1[p]]]
+      g2 <- shuffled[[gene_pairs$gene2[p]]]
+      
+      tbl <- table(factor(g1, 0:1), factor(g2, 0:1))
+      n <- sum(tbl)
+      p1 <- sum(g1)/n
+      p2 <- sum(g2)/n
+      D <- (tbl["1","1"]/n) - p1*p2
+      Dmax <- if(D > 0) min(p1*(1-p2), (1-p1)*p2) else min(p1*p2, (1-p1)*(1-p2))
+      d_shuffled <- ifelse(Dmax == 0, 0, D/Dmax)
+      
+      orig_d <- gene_pairs$fixed_Dprime[p]
+      if(orig_d > threshold) {
+        if(d_shuffled < -threshold) rev_count <- rev_count + 1
+        if(d_shuffled > threshold) cons_count <- cons_count + 1
+      } else if(orig_d < -threshold) {
+        if(d_shuffled > threshold) rev_count <- rev_count + 1 
+        if(d_shuffled < -threshold) cons_count <- cons_count + 1
+      }
+    }
+    
+    tibble(
+      pop1 = pop1,
+      pop2 = pop2,
+      shuffle = shuffle_pop,
+      permutation = i,
+      reversal = rev_count,
+      conservation = cons_count,
+      total_pairs = nrow(gene_pairs)
+    )
+  }
+  
+  # 5. Calculate observed values -------------------------------------------
+  target_d <- Dprime2matrix(target_pa)
+  observed <- list(
+    reversal = sum(
+      (gene_pairs$fixed_Dprime > threshold & target_d[upper_tri][strong_indices] < -threshold) |
+      (gene_pairs$fixed_Dprime < -threshold & target_d[upper_tri][strong_indices] > threshold)
+    ),
+    conservation = sum(
+      (gene_pairs$fixed_Dprime > threshold & target_d[upper_tri][strong_indices] > threshold) |
+      (gene_pairs$fixed_Dprime < -threshold & target_d[upper_tri][strong_indices] < -threshold)
+    )
+  )
+  
+  # 6. Combine results -----------------------------------------------------
+  bind_rows(
+    tibble(
+      pop1 = pop1,
+      pop2 = pop2,
+      shuffle = shuffle_pop,
+      permutation = 0,
+      reversal = observed$reversal,
+      conservation = observed$conservation,
+      total_pairs = nrow(gene_pairs)
+    ),
+    results
+  )
+}
+
+# Process all population pairs in both directions -------------------------
+all_results <- combn(population_names, 2, simplify = FALSE) %>% 
+  map_df(~{
+    pair <- .x
+    bind_rows(
+      analyze_pair(pair[1], pair[2], "pop2"),
+      analyze_pair(pair[1], pair[2], "pop1")
+    )
+  }) %>% 
+  filter(!is.null(total_pairs))  # Remove empty results
+
+# Save consolidated results -----------------------------------------------
+write_csv(all_results, "population_linkage_analysis_results_vax.csv")
+
+```
+
+```{r}
+library(tidyverse)
+
+# Global parameter (must match your analysis scripts)
+n_perm <- 1000  # Number of permutations used in both analyses
+
+# 1. Statistical Testing Function -----------------------------------------
+analyze_significance <- function(data) {
+  # Separate observed and permuted data
+  observed <- data %>% filter(permutation == 0)
+  permutations <- data %>% filter(permutation > 0)
+  
+  # Calculate p-values with continuity correction
+  reversal_p <- (sum(permutations$reversal >= observed$reversal) + 1) / (n_perm + 1)
+  conservation_p <- (sum(permutations$conservation >= observed$conservation) + 1) / (n_perm + 1)
+  
+  # Two-tailed p-values
+  reversal_p_two_tailed <- (sum(abs(permutations$reversal - mean(permutations$reversal)) >= 
+                                 abs(observed$reversal - mean(permutations$reversal))) + 1) / (n_perm + 1)
+  
+  conservation_p_two_tailed <- (sum(abs(permutations$conservation - mean(permutations$conservation)) >= 
+                                      abs(observed$conservation - mean(permutations$conservation))) + 1) / (n_perm + 1)
+  
+  # Return results
+  tibble(
+    comparison = paste(unique(data$pop1), unique(data$pop2), unique(data$shuffle)),
+    n_pairs = unique(observed$total_pairs),
+    
+    # Reversal analysis
+    observed_reversal = observed$reversal,
+    permuted_mean_reversal = mean(permutations$reversal),
+    reversal_p_one_tail = reversal_p,
+    reversal_p_two_tail = reversal_p_two_tailed,
+    
+    # Conservation analysis
+    observed_conservation = observed$conservation,
+    permuted_mean_conservation = mean(permutations$conservation),
+    conservation_p_one_tail = conservation_p,
+    conservation_p_two_tail = conservation_p_two_tailed
+  )
+}
+
+# 2. Load and Combine All Results -----------------------------------------
+# Load both datasets
+vax_results <- read_csv("population_linkage_analysis_results_vax.csv")
+three_pop_results <- read_csv("population_linkage_analysis_results.csv")
+
+# Combine all results
+all_results <- bind_rows(
+  vax_results,
+  three_pop_results
+)
+
+# 3. Process Combined Data ------------------------------------------------
+significance_results <- all_results %>%
+  group_by(pop1, pop2, shuffle) %>%
+  group_map(~ analyze_significance(.x), .keep = TRUE) %>%
+  bind_rows()
+
+# 4. Save Unified Results -------------------------------------------------
+write_csv(significance_results, "combined_significance_results_all_populations.csv")
+```
+
+
+```{r}
+# Define population pairs
+population_pairs <- list(
+  c("mass", "maela"),
+  c("mass", "south"), 
+  c("maela", "south")
+)
+
+absolu=TRUE
+print(absolu)
+
+# Define population pairs
+population_pairs <- list(
+  c("mass", "maela"),
+  c("mass", "south"), 
+  c("maela", "south")
+)
+
+# Modified analysis function with LD filtering
+analyze_pair <- function(pair) {
+  print(absolu)
+  pop1_name <- pair[1]
+  pop2_name <- pair[2]
+  
+  # Load presence-absence matrices
+  pop1_pa <- get(paste0("wide_data_filtered_", pop1_name))
+  pop2_pa <- get(paste0("wide_data_filtered_", pop2_name))
+  
+  # Find common genes within frequency thresholds
+  common_genes <- intersect(
+    colnames(pop1_pa)[colSums(pop1_pa) > fmin*nrow(pop1_pa) & colSums(pop1_pa) < fmax*nrow(pop1_pa)],
+    colnames(pop2_pa)[colSums(pop2_pa) > fmin*nrow(pop2_pa) & colSums(pop2_pa) < fmax*nrow(pop2_pa)]
+  )
+  
+  # Subset matrices
+  pop1_sub <- pop1_pa[, common_genes]
+  pop2_sub <- pop2_pa[, common_genes]
+  
+  # Compute D' matrices
+  compute_dprime <- function(df) {
+    d <- Dprime2matrix(df)
+    d[upper.tri(d)]
+  }
+  
+  pop1_d <- compute_dprime(pop1_sub)
+  pop2_d <- compute_dprime(pop2_sub)
+  
+  # Identify significant LD pairs
+  pop1_strong <- which(abs(pop1_d) > 0.6)
+  pop2_strong <- which(abs(pop2_d) > 0.6)
+  
+  # Column 1: Pop1 strong pairs
+  pop2_shuffled <- pop2_sub
+  pop2_shuffled[] <- lapply(pop2_shuffled, sample)
+  pop2_shuffled_d <- compute_dprime(pop2_shuffled)
+  
+  if(absolu ==TRUE){col1_data <- data.frame(
+    Difference = c(
+      abs(pop1_d[pop1_strong] - pop2_d[pop1_strong]),  # Observed difference
+      abs(pop1_d[pop1_strong] - pop2_shuffled_d[pop1_strong])  # Pop2 shuffled
+    ),
+    Type = rep(c("Observed", "Shuffled population 2"), 
+              c(length(pop1_strong), length(pop1_strong)))
+  )}
+  else{col1_data <- data.frame(
+    Difference = c(
+      pop1_d[pop1_strong] - pop2_d[pop1_strong],  # Observed difference
+      pop1_d[pop1_strong] - pop2_shuffled_d[pop1_strong]  # Pop2 shuffled
+    ),
+    Type = rep(c("Observed", "Shuffled population 2"), 
+              c(length(pop1_strong), length(pop1_strong)))
+  )}
+  
+  # Column 2: Pop2 strong pairs
+  pop1_shuffled <- pop1_sub
+  pop1_shuffled[] <- lapply(pop1_shuffled, sample)
+  pop1_shuffled_d <- compute_dprime(pop1_shuffled)
+  
+  if(absolu ==TRUE){col2_data <- data.frame(
+    Difference = c(
+      abs(pop2_d[pop2_strong] - pop1_d[pop2_strong]),  # Observed difference
+      abs(pop2_d[pop2_strong] - pop1_shuffled_d[pop2_strong])  # Pop1 shuffled
+    ),
+    Type = rep(c("Observed", "Shuffled population 2"), 
+              c(length(pop2_strong), length(pop2_strong)))
+  )}
+  
+  else{col2_data <- data.frame(
+    Difference = c(
+      pop2_d[pop2_strong] - pop1_d[pop2_strong],  # Observed difference
+      pop2_d[pop2_strong] - pop1_shuffled_d[pop2_strong]  # Pop1 shuffled
+    ),
+    Type = rep(c("Observed", "Shuffled population 2"), 
+              c(length(pop2_strong), length(pop2_strong)))
+  )}
+  
+  list(col1 = col1_data, col2 = col2_data)
+}
+
+# Create visualization function
+create_comparison_plot <- function(data, title) {
+  ggplot(data, aes(x = Difference, color = Type)) +
+    geom_density(linewidth = 0.8) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+    scale_color_manual(values = c("Observed" = "#1b9e77", 
+                                "Shuffled population 2" = "#d95f02")) +
+    xlim(ifelse(absolu==TRUE,0,-2), 2) + 
+    ylim(0, ifelse(absolu==TRUE,3.5,1.75)) +
+    labs(title = title,  x = expression(paste("difference in linkage between populations ", Delta*D*"'")), y = "Density") +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.title = element_text(hjust = 0.5, size = 11, face = "bold"),
+      axis.text = element_text(size = 9)
+    )
+}
+
+# Generate plot data
+plot_data <- lapply(population_pairs, analyze_pair)
+
+# Create all plots in order
+all_plots <- list()
+for (i in seq_along(plot_data)) {
+  pair <- population_pairs[[i]]
+  
+  # Column 1 plot (Pop1 strong pairs)
+  col1_plot <- create_comparison_plot(
+    plot_data[[i]]$col1,
+    paste0(toupper(pair[1]), " vs ", toupper(pair[2]), "\nStrong LD in ", toupper(pair[1]))
+  )
+  
+  # Column 2 plot (Pop2 strong pairs)
+  col2_plot <- create_comparison_plot(
+    plot_data[[i]]$col2,
+    paste0(toupper(pair[1]), " vs ", toupper(pair[2]), "\nStrong LD in ", toupper(pair[2]))
+  )
+  
+  all_plots <- c(all_plots, list(col1_plot, col2_plot))
+}
+
+# Arrange final grid
+grid.arrange(
+  grobs = all_plots,
+  nrow = 3,
+  ncol = 2,
+  widths = c(1, 1),
+  heights = rep(1, 3)
+)
+
+
+
+# Save the grid arrangement to a variable first
+final_plot <- grid.arrange(
+  grobs = all_plots,
+  nrow = 3,
+  ncol = 2,
+  widths = c(1, 1),
+  heights = rep(1, 3)
+)
+
+# Then save using the arranged plot object
+ggsave("LD_comparison_grid_filtered_abs.pdf", 
+       plot = final_plot,  # Specify the plot object
+       width = 12, 
+       height = 15, 
+       dpi = 300)
+
+
+```
+
+## Quadruplets and linkage reversal
+### harsher threshold for alternative alleles
+```{r}
+count_quad = function(dfmix, thresh,thresh_alternative, shuffle) {
+  dmin = thresh
+  dmin_alt=thresh_alternative
+  
+  # 1. (Optional) Shuffle the 'First'/'Second' columns
+  if (shuffle) {
+    dfmix$First  = sample(dfmix$First)
+    dfmix$Second = sample(dfmix$Second)
+  }
+
+  # Helper function for consistent gene-pair labeling
+  pair_id <- function(gene1, gene2) {
+    if (gene1 < gene2) {
+      paste(gene1, gene2, sep = "_")
+    } else {
+      paste(gene2, gene1, sep = "_")
+    }
+  }
+  
+  ## ----------------------------
+  ## STEP 1: Filter out pairs
+  ## ----------------------------
+  
+  # a) Exclude pairs that are positive in BOTH or negative in BOTH populations
+  pos_in_both <- dfmix[dfmix$dvec.x >  dmin & dfmix$dvec.y >  dmin, ]
+  pos_in_both$pair <- mapply(pair_id, pos_in_both$First, pos_in_both$Second)
+  
+  # This is for the alternative alleles: can use a stronger threhsold
+  neg_in_both <- dfmix[dfmix$dvec.x < -dmin_alt & dfmix$dvec.y < -dmin_alt, ]
+  neg_in_both$pair <- mapply(pair_id, neg_in_both$First, neg_in_both$Second)
+  
+  # List of pairs to exclude
+  pairs_to_exclude <- unique(c(pos_in_both$pair, neg_in_both$pair))
+  
+  # b) Keep pairs that are positive in X only (and not in Y)
+  pos_pairs_x <- dfmix[dfmix$dvec.x >  dmin & dfmix$dvec.y <= -dmin, c("First", "Second")]
+  pos_pairs_x$pair <- mapply(pair_id, pos_pairs_x$First, pos_pairs_x$Second)
+  pos_pairs_x <- pos_pairs_x[!pos_pairs_x$pair %in% pairs_to_exclude, ]
+  
+  # c) Keep pairs that are positive in Y only (and not in X)
+  pos_pairs_y <- dfmix[dfmix$dvec.y >  dmin & dfmix$dvec.x <= -dmin, c("First", "Second")]
+  pos_pairs_y$pair <- mapply(pair_id, pos_pairs_y$First, pos_pairs_y$Second)
+  pos_pairs_y <- pos_pairs_y[!pos_pairs_y$pair %in% pairs_to_exclude, ]
+  
+  ## ----------------------------
+  ## STEP 2 (Optional): Create hash tables for quick lookup
+  ## ----------------------------
+  # (Not strictly necessary for the final counting, but can be useful.)
+  pos_pairs_y_env <- new.env(hash = TRUE, parent = emptyenv())
+  for (p in pos_pairs_y$pair) {
+    pos_pairs_y_env[[p]] <- TRUE
+  }
+  
+  ## ----------------------------
+  ## STEP 3: Find valid quadruples
+  ## ----------------------------
+  
+  # We'll store both the count (`cpt`) and a data frame of quadruples
+  cpt = 0
+  valid_quadruples <- data.frame(
+    g1 = character(),
+    g2 = character(),
+    g3 = character(),
+    g4 = character(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Convert 'pos_pairs_x' into a matrix/data.frame for iteration
+  pos_pairs_x_list <- pos_pairs_x[, c("First", "Second")]
+  
+  n_x = nrow(pos_pairs_x_list)
+  
+  # Double loop over all pairs in X
+  for (i in seq_len(n_x - 1)) {
+    p1 <- pos_pairs_x_list[i, ]
+    # p1: (g1, g2)
+    g1 <- p1[[1]]
+    g2 <- p1[[2]]
+    
+    for (j in seq(i + 1, n_x)) {
+      p2 <- pos_pairs_x_list[j, ]
+      # p2: (g3, g4)
+      g3 <- p2[[1]]
+      g4 <- p2[[2]]
+      
+      # Construct possible cross pairs
+      # 1) p3 and p4
+      p3 = pair_id(g1, g4)   # (g1, g4)
+      p4 = pair_id(g2, g3)   # (g2, g3)
+      
+      # 2) p5 and p6
+      p5 = pair_id(g1, g3)   # (g1, g3)
+      p6 = pair_id(g2, g4)   # (g2, g4)
+
+      # Check membership in pos_pairs_y
+      #if (p3 %in% pos_pairs_y$pair && p4 %in% pos_pairs_y$pair) {
+      if (p3 %in% pos_pairs_y$pair && p4 %in% pos_pairs_y$pair && p5 %in% neg_in_both$pair && p6 %in% neg_in_both$pair) {
+        cpt = cpt + 1
+        valid_quadruples <- rbind(
+          valid_quadruples,
+          data.frame(g1 = g1, g2 = g3, g3 = g2, g4 = g4, stringsAsFactors = FALSE)
+        )
+      }
+      #if (p5 %in% pos_pairs_y$pair && p6 %in% pos_pairs_y$pair) {
+      if (p5 %in% pos_pairs_y$pair && p6 %in% pos_pairs_y$pair && p3 %in% neg_in_both$pair && p4 %in% neg_in_both$pair) {
+        cpt = cpt + 1
+        valid_quadruples <- rbind(
+          valid_quadruples,
+          data.frame(g1 = g1, g2 = g4, g3 = g2, g4 = g3, stringsAsFactors = FALSE)
+        )
+      }
+    }
+  }
+  
+  # Return both the count and the list of quadruples
+  return(list(
+    cpt = cpt,
+    quadruples = valid_quadruples
+  ))
+}
+
+annotate_quadruples <- function(quadruples, annotations=data, pfam=FALSE, oldname=FALSE) {
+  
+  # Ensure columns 'X.query' and 'Description' exist in the annotations
+  if (!all(c("X.query", "Description") %in% names(annotations))) {
+    stop("Annotations data must contain 'X.query' and 'Description' columns.")
+  }
+  
+  # Ensure quadruples has columns g1, g2, g3, g4
+  required_cols <- c("g1", "g2", "g3", "g4")
+  if (!all(required_cols %in% names(quadruples))) {
+    stop("Quadruples data must contain columns 'g1', 'g2', 'g3', and 'g4'.")
+  }
+  
+  # Build a named lookup vector: names = X.query (like 'c3'), values = Description
+  desc_map <- setNames(annotations$Description, annotations$X.query)
+  #desc_map <- setNames(annotations$COG_category, annotations$X.query)
+  
+  if(pfam==TRUE){desc_map <- setNames(annotations$PFAMs, annotations$X.query)}
+  if(oldname==TRUE){desc_map <- setNames(annotations$oldname, annotations$X.query)}
+  
+  # Replace the gene IDs in the quadruples with their Description
+  # If an ID is not in 'desc_map', it becomes NA by default
+  quadruples$g1 <- desc_map[ quadruples$g1 ]
+  quadruples$g2 <- desc_map[ quadruples$g2 ]
+  quadruples$g3 <- desc_map[ quadruples$g3 ]
+  quadruples$g4 <- desc_map[ quadruples$g4 ]
+  
+  return(quadruples)
+}
+
+```
+
+
+```{r}
+dfmix=plot_d_pops(summary_southf,summary_maelaf,pval=0.05)[[2]]
+dfmix <- separate(dfmix, col = pairsvec, into = c("First", "Second"), sep = "-")
+dfmix=dfmix[,c("First", "Second","dvec.x","dvec.y")]
+
+
+temp1=count_quad(dfmix,0.5,0.7,FALSE)$quadruples
+temppfam=annotate_quadruples(temp1, pfam = TRUE)
+tempoldname=annotate_quadruples(temp1, oldname = TRUE)
+tempdesc=annotate_quadruples(temp1, pfam = FALSE)
+
+# write.table(temppfam, "/Users/martin/Documents/structure/data/R/annotate_quads/manuscript_tables/quadruplets_pfam.csv", row.names = FALSE, col.names = FALSE, quote = FALSE, sep="\t")
+# write.table(tempoldname, "/Users/martin/Documents/structure/data/R/annotate_quads/manuscript_tables/quadruplets_oldname.csv", row.names = FALSE, col.names = FALSE, quote = FALSE, sep="\t")
+# write.table(tempdesc, "/Users/martin/Documents/structure/data/R/annotate_quads/manuscript_tables/quadruplets_desc.csv", row.names = FALSE, col.names = FALSE, quote = FALSE, sep="\t")
+```
+
+
+```{r}
+names_annot = setNames( copycluster$oldname,copycluster$c)
+temp3=temp1
+temp3$g1=names_annot[temp3$g1]
+temp3$g2=names_annot[temp3$g2]
+temp3$g3=names_annot[temp3$g3]
+temp3$g4=names_annot[temp3$g4]
+
+all_values <- unlist(temp3)
+temp4 <- data.frame(values = all_values)
+#write.table(temp4, "/Users/martin/Documents/structure/data/R/quadruplets_names.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+```{r}
+# Read BLAST results
+blast_results <- read.table("/Users/martin/Documents/structure/data/R/annotate_quads/blast_results2.tsv", sep = "\t", header = FALSE, 
+                          col.names = c("Query", "Subject", "Pident","length","evalue"))
+
+# Get unique gene IDs
+genes <- unique(c(blast_results$Query, blast_results$Subject))
+
+# Create empty matrix
+identity_matrix <- matrix(NA, nrow = length(genes), ncol = length(genes),
+                         dimnames = list(genes, genes))
+
+# Fill matrix with BLAST results
+for(i in 1:nrow(blast_results)) {
+  query <- as.character(blast_results$Query[i])
+  subject <- as.character(blast_results$Subject[i])
+  identity_matrix[query, subject] <- blast_results$Pident[i]
+  identity_matrix[subject, query] <- blast_results$Pident[i]  # Make symmetric
+}
+
+# Fill diagonal with 100% identity
+diag(identity_matrix) <- 100
+
+# Convert to data frame and save as CSV
+identity_df <- as.data.frame(identity_matrix)
+
+
+
+
+# Create empty matrix
+identity_matrix2 <- matrix(NA, nrow = length(genes), ncol = length(genes),
+                         dimnames = list(genes, genes))
+# Fill matrix with BLAST results
+for(i in 1:nrow(blast_results)) {
+  query <- as.character(blast_results$Query[i])
+  subject <- as.character(blast_results$Subject[i])
+  identity_matrix2[query, subject] <- blast_results$length[i]
+  identity_matrix2[subject, query] <- blast_results$length[i]  # Make symmetric
+}
+
+# Fill diagonal with 100% identity
+diag(identity_matrix2) <- -1
+
+# Convert to data frame and save as CSV
+identity_df2 <- as.data.frame(identity_matrix2)
+
+
+# Create empty matrix
+identity_matrix3 <- matrix(NA, nrow = length(genes), ncol = length(genes),
+                         dimnames = list(genes, genes))
+# Fill matrix with BLAST results
+for(i in 1:nrow(blast_results)) {
+  query <- as.character(blast_results$Query[i])
+  subject <- as.character(blast_results$Subject[i])
+  identity_matrix3[query, subject] <- blast_results$evalue[i]
+  identity_matrix3[subject, query] <- blast_results$evalue[i]  # Make symmetric
+}
+
+# Fill diagonal with 100% identity
+diag(identity_matrix3) <- -1
+
+# Convert to data frame and save as CSV
+identity_df3 <- as.data.frame(identity_matrix3)
+
+
+
+
+
+# Add g1g2 column: Identity between genes in g1 and g2
+temp3$g1g2_evalue <- apply(temp3, 1, function(row) {
+  identity_matrix3[row["g1"], row["g2"]]
+})
+
+# Add g1g2 column: Identity between genes in g1 and g2
+temp3$g1g2_id <- apply(temp3, 1, function(row) {
+  identity_matrix[row["g1"], row["g2"]]
+})
+
+# Add g1g2 column: Identity between genes in g1 and g2
+temp3$g1g2_len <- apply(temp3, 1, function(row) {
+  identity_matrix2[row["g1"], row["g2"]]
+})
+
+
+
+
+# Add g3g4 column: Identity between genes in g3 and g4
+temp3$g3g4_evalue <- apply(temp3, 1, function(row) {
+  identity_matrix3[row["g3"], row["g4"]]
+})
+
+# Add g3g4 column: Identity between genes in g3 and g4
+temp3$g3g4_id <- apply(temp3, 1, function(row) {
+  identity_matrix[row["g3"], row["g4"]]
+})
+
+
+
+# Add g3g4 column: Identity between genes in g3 and g4
+temp3$g3g4_len <- apply(temp3, 1, function(row) {
+  identity_matrix2[row["g3"], row["g4"]]
+})
+
+
+```
+
+## record in excel file
+```{r}
+library(writexl)
+
+# Create a named list of dataframes (names = sheet names)
+sheets <- list(
+  "Names, blast results" = temp3,        # Sheet name "Sheet1" will contain temp3
+  "PFAM annotations" = temppfam,     # Sheet name "Sheet2" will contain tempfpam
+  "Uniprot description" = tempdesc     # Sheet name "Sheet3" will contain tempdessc
+)
+
+# Write to Excel
+write_xlsx(sheets, "/Users/martin/Documents/structure/data/R/quadruplets_names.xlsx")
+
+```
+
+#test with other pairs
+```{r}
+# Generate random pairs and calculate their E-values
+set.seed(123)  # For reproducibility
+random_pairs <- data.frame(
+  g1 = character(),
+  g2 = character()
+)
+
+for(i in 1:10000) {  # Generate 10,000 random pairs
+  pair <- sample(genes, size = 2, replace = FALSE)
+  random_pairs <- rbind(random_pairs, data.frame(g1 = pair[1], g2 = pair[2]))
+}
+
+# Calculate E-values for random pairs
+random_pairs$evalue <- mapply(function(g1, g2) {
+  if(!is.na(identity_matrix[g1, g2])) return(identity_matrix[g1, g2])
+  return(NA)  # Handle missing values
+}, random_pairs$g1, random_pairs$g2)
+
+# Extract E-values for your tested pairs
+tested_evalues <- c(temp2$g1g2, temp2$g3g4)  # Assuming temp2 contains your pairs
+tested_evalues <- tested_evalues[!is.na(tested_evalues)]
+
+# Extract valid E-values for random pairs
+random_evalues <- random_pairs$evalue[!is.na(random_pairs$evalue)]
+
+# Perform Mann-Whitney U test
+test_result <- wilcox.test(tested_evalues, random_evalues, 
+                          alternative = "two.sided",  # or "less" if directional
+                          exact = FALSE)  # Use exact = TRUE for small samples
+
+# Output results
+cat("Mann-Whitney U test results:\n")
+print(test_result)
+
+
+```
+
+
+
+
+
+
+
+```{r}
+# dfmix=plot_d_pops(summary_massf,summary_southf,pval=0.05)[[2]]
+# 
+# 
+# dfmix <- separate(dfmix, col = pairsvec, into = c("First", "Second"), sep = "-")
+# dfmix=dfmix[order(dfmix$First),]
+# 
+listiso = c("c693","c9962","c21610","c42048")
+listiso = c("c37444","c9962","c21610","c42048")
+
+a=get_plots(isoinfo)
+b=get_main_plot(wide_data_filtered[(rownames(wide_data_filtered) %in% rownames(wide_data_filtered_mass))  ,colnames(wide_data_filtered) %in% listiso])
+ggarrange(b[[1]],a[[3]],a[[1]],a[[2]],b[[2]],  widths = c(2,0.2,0.2,0.2,3),
+          ncol = 5, nrow = 1, align = "h")
+
+
+a=get_plots(isoinfo)
+b=get_main_plot(wide_data_filtered[(rownames(wide_data_filtered) %in% rownames(wide_data_filtered_south))  ,colnames(wide_data_filtered) %in% listiso])
+ggarrange(b[[1]],a[[3]],a[[1]],a[[2]],b[[2]],  widths = c(2,0.2,0.2,0.2,3),
+          ncol = 5, nrow = 1, align = "h")
+
+
+
+a=get_plots(isoinfo)
+b=get_main_plot(wide_data_filtered[,colnames(wide_data_filtered) %in% listiso])
+ggarrange(b[[1]],a[[3]],a[[1]],a[[2]],b[[2]],  widths = c(2,0.2,0.2,0.2,3),
+          ncol = 5, nrow = 1, align = "h")
+
+```
+
+
+
+
+
+```{r}
+df=anno_summary_allf
+df=df[df$chipvec<1.05,]
+
+vec2 = c("-", "K", "O", "S" ,"P", "E", "L", "D", "V", "M", "H", "G", "C", "J")
+dfcats = data.frame(matrix(0,nrow=length(vec2),ncol=length(vec2)))
+colnames(dfcats) = vec2
+rownames(dfcats) = vec2
+veccatsall=setNames(rep(0,14),vec2)
+for(row in seq(1,nrow(df))){
+  c1=df$c1_cat[row]
+  c2=df$c2_cat[row]
+  if(c1 %in% vec2){
+    if(c2 %in% vec2){
+      dfcats[c1,c2] = dfcats[c1,c2]+1 
+      dfcats[c2,c1] = dfcats[c2,c1]+1 
+    }
+  }
+}
+
+veccatsall=table(anno_cat[colnames(wide_data_filtered)])
+
+copdfcats=dfcats
+
+for(cat in vec2){
+  dfcats[,cat] = dfcats[,cat]/(veccatsall[cat]-1)
+  dfcats[cat,] = unlist(dfcats[cat,])/(veccatsall[cat])
+}
+
+
+dfcats_melt <- melt(as.matrix(dfcats))
+
+```
+
+## Figure 5a
+```{r}
+which_test = "all"
+#which_test = "positive"
+df=anno_summary_allf
+df=df[!df$c1_cat=="-" & !df$c1_cat=="S" ,]
+df=df[!df$c2_cat=="-" & !df$c2_cat=="S" ,]
+dff=df[df$chipvec<0.05,]
+
+if(which_test=="all"){dff=dff[(dff$dvec< -0.6) | (dff$dvec > 0.6),]}
+if(which_test=="positive"){dff=dff[(dff$dvec > 0.6),]}
+
+
+vec2 = c("K", "O","P", "E", "L", "D", "V", "M", "H", "G", "C", "J")
+dfcats = data.frame(matrix(0,nrow=length(vec2),ncol=length(vec2)))
+colnames(dfcats) = vec2
+rownames(dfcats) = vec2
+veccatsall=setNames(rep(0,14),vec2)
+for(row in seq(1,nrow(df))){
+  c1=df$c1_cat[row]
+  c2=df$c2_cat[row]
+  if(c1 %in% vec2){
+    if(c2 %in% vec2){
+      dfcats[c1,c2] = dfcats[c1,c2]+1 
+      dfcats[c2,c1] = dfcats[c2,c1]+1 
+    }
+  }
+}
+
+dfcatsf = data.frame(matrix(0,nrow=length(vec2),ncol=length(vec2)))
+colnames(dfcatsf) = vec2
+rownames(dfcatsf) = vec2
+veccatsall=setNames(rep(0,14),vec2)
+for(row in seq(1,nrow(df))){
+  c1=dff$c1_cat[row]
+  c2=dff$c2_cat[row]
+  if(c1 %in% vec2){
+    if(c2 %in% vec2){
+      dfcatsf[c1,c2] = dfcatsf[c1,c2]+1 
+      dfcatsf[c2,c1] = dfcatsf[c2,c1]+1 
+    }
+  }
+}
+
+dfdiv=dfcatsf/dfcats
+
+
+dfdiv_melt <- melt(as.matrix(dfdiv))
+
+
+dfdiv_melt$Var1 = factor(dfdiv_melt$Var1, levels = rev(sort(unique(colnames(dfdiv)))))
+dfdiv_melt$Var2 = factor(dfdiv_melt$Var2, levels = sort(unique(colnames(dfdiv))))
+
+if(which_test=="all"){legend_label = "Probability of \n |D'|>0.5"}
+if(which_test=="positive"){legend_label = "Probability of \n D'>0.5"}
+
+# # Create the heatmap using ggplot2
+# ggplot(data = dfdiv_melt, aes(x = Var2, y = Var1, fill = value)) +
+#   geom_tile() +
+#   scale_fill_gradient(low = "white", high = "#326F32") +  # Choose a color gradient for the heatmap
+#   labs(x = "KEGG category", y = "KEGG category", fill = "Probability of \n |D'|>0.5") +    # Labels for axes and color legend
+#   theme_minimal() +                                    # Choose a clean theme
+#   theme(axis.text.x = element_text(hjust = 1), axis.title = element_text(color="black", size=14),)  +
+#   scale_x_discrete(
+#     expand = expansion(mult = c(0,0)), guide = guide_axis(angle = 0),
+#     position = "top"
+#   )
+
+
+# Create the heatmap
+ggplot(data = dfdiv_melt, aes(x = Var2, y = Var1, fill = value)) +
+  geom_tile() +
+  # Add asterisks to diagonal cells (excluding "L" and "K" columns)
+  geom_text(
+    data = subset(dfdiv_melt, Var1 == Var2 & !(Var2 %in% c("L", "K"))),
+    aes(label = "*"),  # Add asterisk
+    color = "black",   # Adjust color for visibility
+    size = 5           # Adjust size as needed
+  ) +
+  scale_fill_gradient(low = "white", high = "#326F32") +
+  labs(x = "Functional category", y = "Functional category", fill = "Probability of \n |D'|>0.6") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(hjust = 1),
+    axis.title = element_text(color = "black", size = 14)
+  ) +
+  scale_x_discrete(
+    expand = expansion(mult = c(0, 0)),
+    guide = guide_axis(angle = 0),
+    position = "top"
+  )
+
+ggsave(paste0("/Users/martin/Documents/structure/figure/kegg_linkage_asterisk.pdf"), width = 20, height = 12, units = "cm")
+
+
+for(i in seq(1,ncol(dfdiv))){
+  val = dfdiv[i,i]
+  others=dfdiv[i,-i]
+  out=t.test(others, mu=val)
+  print(colnames(dfdiv)[i])
+  print(out$p.value)
+}
+
+
+
+```
+
+
+#try to find significance of the diagonal
+
+```{r}
+dfdiv=dfdiv[-which(rownames(dfdiv)=="J"),-which(colnames(dfdiv)=="J")]
+
+for(i in seq(1,ncol(dfdiv))){
+  val = dfdiv[i,i]
+  others=dfdiv[i,-i]
+  out=t.test(others, mu=val)
+  print(colnames(dfdiv)[i])
+  print(out$p.value)
+}
+
+
+
+# Create groups
+same_group <- dfdiv_melt[dfdiv_melt$Var1 == dfdiv_melt$Var2, "value"]
+diff_group <- dfdiv_melt[dfdiv_melt$Var1 != dfdiv_melt$Var2, "value"]
+
+# Check group sizes
+cat("Same group observations:", length(same_group), "\n")
+cat("Different group observations:", length(diff_group), "\n")
+
+# Perform t-test (if sufficient observations)
+if(length(same_group) > 1 && length(diff_group) > 1) {
+  t_test <- t.test(same_group, diff_group)
+  print(t_test)
+} else {
+  cat("Insufficient observations for t-test\n")
+  cat("Consider non-parametric test instead:\n")
+  print(wilcox.test(same_group, diff_group))
+}
+
+
+```
+
+
+```{r}
+# 1. Extract pairwise phylogenetic distances from treex
+phylo_distances <- cophenetic.phylo(treex)
+
+# 2. Compute Jaccard similarity (gene content relatedness) from wide_data_filtered
+jaccard_dist <- vegdist(wide_data_filtered, method = "jaccard", binary = TRUE)
+jaccard_sim <- jaccard_dist
+
+# 3. Convert both matrices to long format (for easier plotting)
+phylo_dist_df <- as.data.frame(as.table(as.matrix(phylo_distances)))
+colnames(phylo_dist_df) <- c("Isolate1", "Isolate2", "Phylogenetic_Distance")
+
+jaccard_sim_df <- as.data.frame(as.table(as.matrix(jaccard_sim)))
+colnames(jaccard_sim_df) <- c("Isolate1", "Isolate2", "Gene_Content_Similarity")
+
+# 4. Merge the two datasets on Isolate1 and Isolate2
+merged_data <- merge(phylo_dist_df, jaccard_sim_df, by = c("Isolate1", "Isolate2"))
+
+# 5. Create the scatter plot using ggplot2
+ggplot(merged_data, aes(x = Phylogenetic_Distance, y = Gene_Content_Similarity)) +
+  geom_point(alpha = 0.1) +
+#  geom_smooth(method = "lm", color = "blue", se = FALSE) +  # Add trend line
+  labs(
+    title = "Gene Content Relatedness vs. Phylogenetic Distance",
+    x = "Phylogenetic Distance",
+    y = "Gene Content Distance"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+```{r}
+ggplot(merged_data, aes(x = Phylogenetic_Distance, y = Gene_Content_Similarity)) +
+#  geom_point(alpha = 0.3) +  # Optionally include points with transparency
+  geom_density_2d(color = "blue") +  # Add 2D density contours
+  labs(
+    title = "Gene Content Relatedness vs. Phylogenetic Distance (Density Plot)",
+    x = "Phylogenetic Distance",
+    y = "Gene Content Relatedness (Jaccard Similarity)"
+  ) +
+  theme_minimal()
+
+
+```
+
+
+## Figure S10b
+```{r}
+ggplot(merged_data, aes(x = Phylogenetic_Distance, y = Gene_Content_Similarity)) +
+  geom_bin2d(bins = 30) +  # Create a density heatmap
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "pairs of \ngenomes") +  # Custom legend title
+  labs(
+    title = "",
+    x = "Core genome divergence (cophenetic distance)",
+    y = "Accessory genome divergence (Jaccard distance)"
+  ) +
+  theme_minimal()
+
+
+
+# 5. Create a heatmap-style density plot using binning (geom_bin2d) with logarithmic scale
+ggplot(merged_data, aes(x = Phylogenetic_Distance, y = Gene_Content_Similarity)) +
+  geom_bin2d(bins = 30) +  # Create a density heatmap
+  scale_fill_gradient(
+    low = "lightblue", high = "darkblue", 
+    trans = "log10",  # Logarithmic transformation
+    na.value = NA,    # Ignore bins with zero count
+    name = "Pairs of \ngenomes"
+  ) +
+  labs(
+    title = "",
+    x = "Core genome divergence (cophenetic distance)",
+    y = "Accessory genome divergence (Jaccard distance)"
+  ) +
+  theme_minimal()
+
+ggsave("/Users/martin/Documents/structure/data/R/distance_relatedness.pdf")
+```
+
